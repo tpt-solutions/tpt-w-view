@@ -1,0 +1,8 @@
+Modern Image Viewer & Batch Converter (IrfanView / XnView Alternative)
+Concept: tpt-view – A hardware-accelerated, instant-loading image viewer.
+Tech Stack: Rust (using the image crate and GPU acceleration via wgpu) + TypeScript/Tauri.
+Why it’s better: IrfanView is incredibly fast but looks like Windows 95. XnView is nagware. A modern alternative can offer instant loading of massive images (including RAW, WebP, AVIF), a clean modern UI, and powerful batch conversion/renaming without any ads or registration prompts.
+
+Compatible on Windows, Linux and Archon. https://github.com/tpt-solutions/tpt-archon
+
+Linux & Archon Compatibility: Uses standard Linux GPU APIs (Vulkan/OpenGL). On Archon, image decoding and thumbnail generation utilize the unified page cache, allowing instant, zero-allocation scrolling through directories with tens of thousands of high-res images.
