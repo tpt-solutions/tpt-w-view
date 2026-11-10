@@ -85,10 +85,11 @@ regeneration helper), `cargo fmt --check` and `cargo clippy -D warnings` clean, 
       BMP, TIFF, WebP (`core/src/codec.rs`)
 - [x] AVIF decode and encode: dav1d built from source (through `dav1d-sys`, meson + ninja + NASM +
       pkgconf) and the rav1e-based encoder. Covered by `core/tests/avif.rs` and the format matrix.
-- [~] HEIC/HEIF decode — blocked on Windows. libde265 is built and installed under
-      `~\tools\libde265` (approved and done). `libheif-sys` on MSVC does not use its embedded build;
-      it needs libheif from vcpkg. Cloning and bootstrapping vcpkg was denied by the auto-mode
-      permission check, so libheif is not installed. HEIC is not wired into the code yet.
+- [~] HEIC/HEIF decode (`core/src/heic.rs`): libheif 1.23.7 with HEVC via libde265, installed
+      through vcpkg (static triplet). Wired into scanning, thumbnails, batch and the desktop app.
+      EXIF blocks are read (orientation, make, model, date, GPS); the EXIF orientation is applied to
+      the pixels. Tested with in-process HEVC encoding (`core/tests/heic.rs`). Gap: the static-CRT
+      link produces an LNK4098 warning.
 - [~] RAW camera decode via `rawler` 0.7 (`core/src/raw.rs`): CR2, CR3, NEF, ARW, DNG, ORF, RAF,
       RW2, PEF, SRW. Developed through rawler's pipeline (demosaic, white balance, sRGB). Tested on
       synthetic Bayer data and error paths only — **no real camera sample has been run**, and

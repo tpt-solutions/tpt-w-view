@@ -52,11 +52,24 @@ pub(crate) fn read_exif(bytes: &[u8]) -> Metadata {
 
 fn read_exif_fields(bytes: &[u8]) -> Metadata {
     let mut cursor = Cursor::new(bytes);
-    let exif = match Reader::new().read_from_container(&mut cursor) {
-        Ok(exif) => exif,
-        Err(_) => return Metadata::default(),
-    };
+    match Reader::new().read_from_container(&mut cursor) {
+        Ok(exif) => from_exif(&exif),
+        Err(_) => Metadata::default(),
+    }
+}
 
+/// Reads a bare TIFF-structured EXIF block, as stored inside HEIF containers. HEIF prefixes the
+/// block with a 4-byte offset to the TIFF header, which is skipped here.
+pub(crate) fn read_heif_exif(block: &[u8]) -> Option<Metadata> {
+    let offset = u32::from_be_bytes(block.get(0..4)?.try_into().ok()?) as usize;
+    let tiff_start = 4usize.checked_add(offset)?;
+    let tiff = block.get(tiff_start..)?.to_vec();
+    let exif = Reader::new().read_raw(tiff).ok()?;
+    Some(from_exif(&exif))
+}
+
+/// Maps the EXIF fields the viewer uses onto [`Metadata`].
+pub(crate) fn from_exif(exif: &exif::Exif) -> Metadata {
     let orientation = exif
         .get_field(Tag::Orientation, In::PRIMARY)
         .and_then(|f| f.value.get_uint(0))
@@ -65,10 +78,10 @@ fn read_exif_fields(bytes: &[u8]) -> Metadata {
 
     Metadata {
         orientation,
-        make: ascii_field(&exif, Tag::Make),
-        model: ascii_field(&exif, Tag::Model),
-        date_time_original: ascii_field(&exif, Tag::DateTimeOriginal),
-        gps: gps_coordinates(&exif),
+        make: ascii_field(exif, Tag::Make),
+        model: ascii_field(exif, Tag::Model),
+        date_time_original: ascii_field(exif, Tag::DateTimeOriginal),
+        gps: gps_coordinates(exif),
         ..Metadata::default()
     }
 }

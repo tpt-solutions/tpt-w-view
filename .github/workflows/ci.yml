@@ -10,6 +10,9 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # dav1d-sys (AVIF decode via image/avif-native) needs pkg-config on Linux and
+  # no pkg-config on Windows, so build dav1d from source there (meson + ninja + nasm).
+  SYSTEM_DEPS_DAV1D_BUILD_INTERNAL: ${{ runner.os == 'Windows' && 'always' || 'auto' }}
 
 jobs:
   rust:
@@ -26,7 +29,21 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev pkg-config libdav1d-dev libde265-dev libx265-dev
+
+      - name: Install HEIC/AVIF native build tools (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VCPKG_BINARY_SOURCES: 'clear;x-gha,readwrite'
+        run: |
+          pip install meson ninja
+          choco install nasm pkgconfiglite -y --no-progress
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install libde265 x265 --triplet x64-windows
+          if ($LASTEXITCODE -ne 0) { throw "vcpkg install failed" }
+          $prefix = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows"
+          "PKG_CONFIG_PATH=$prefix\lib\pkgconfig" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "$prefix\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Install toolchain (pinned via rust-toolchain.toml)
         uses: dtolnay/rust-toolchain@stable

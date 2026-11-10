@@ -13,6 +13,26 @@ const W: u32 = 64;
 const H: u32 = 48;
 
 fn encode_heic() -> Vec<u8> {
+    encode_heic_with_exif(None)
+}
+
+/// Little-endian TIFF block holding only an Orientation tag, wrapped the way HEIF stores EXIF
+/// (a 4-byte offset to the TIFF header, here zero).
+fn exif_block_with_orientation(orientation: u16) -> Vec<u8> {
+    let mut block = 0u32.to_be_bytes().to_vec();
+    block.extend_from_slice(b"II*\0");
+    block.extend_from_slice(&8u32.to_le_bytes());
+    block.extend_from_slice(&1u16.to_le_bytes());
+    block.extend_from_slice(&0x0112u16.to_le_bytes());
+    block.extend_from_slice(&3u16.to_le_bytes());
+    block.extend_from_slice(&1u32.to_le_bytes());
+    block.extend_from_slice(&orientation.to_le_bytes());
+    block.extend_from_slice(&[0, 0]);
+    block.extend_from_slice(&0u32.to_le_bytes());
+    block
+}
+
+fn encode_heic_with_exif(exif: Option<Vec<u8>>) -> Vec<u8> {
     let mut image = Image::new(W, H, ColorSpace::Rgb(RgbChroma::Rgb)).expect("image");
     image
         .create_plane(Channel::Interleaved, W, H, 8)
@@ -35,15 +55,22 @@ fn encode_heic() -> Vec<u8> {
         .encoder_for_format(CompressionFormat::Hevc)
         .expect("hevc encoder");
     let mut ctx = HeifContext::new().expect("context");
-    ctx.encode_image(&image, &mut encoder, None)
+    let handle = ctx
+        .encode_image(&image, &mut encoder, None)
         .expect("encode");
+    if let Some(block) = exif {
+        ctx.add_exif_metadata(&handle, &block).expect("attach exif");
+    }
     ctx.write_to_bytes().expect("serialise")
 }
 
 #[test]
 fn heic_round_trip_is_close_to_source() {
     let bytes = encode_heic();
-    let decoded = decode_heic_bytes(&bytes).expect("decode heic").to_rgba8();
+    let decoded = decode_heic_bytes(&bytes)
+        .expect("decode heic")
+        .image
+        .to_rgba8();
     assert_eq!(decoded.dimensions(), (W, H));
 
     // Lossy codec: check the gradient is preserved within a tolerance, not exact pixels.
@@ -59,6 +86,28 @@ fn heic_round_trip_is_close_to_source() {
     }
     let mean = total as f64 / (W as f64 * H as f64 * 2.0);
     assert!(mean < 12.0, "mean channel error {mean:.2} too high");
+}
+
+#[test]
+fn exif_orientation_is_applied_to_heic() {
+    // Source is 64 wide x 48 high; orientation 6 means "rotate 90 degrees clockwise to display".
+    let bytes = encode_heic_with_exif(Some(exif_block_with_orientation(6)));
+    let decoded = decode_heic_bytes(&bytes).expect("decode heic");
+    assert_eq!(
+        decoded.metadata.orientation,
+        tpt_view_core::Orientation::Rotate90
+    );
+    assert_eq!(
+        (decoded.image.width(), decoded.image.height()),
+        (H, W),
+        "pixels must be rotated to match the tag"
+    );
+}
+
+#[test]
+fn heic_without_exif_has_default_metadata() {
+    let decoded = decode_heic_bytes(&encode_heic()).expect("decode heic");
+    assert_eq!(decoded.metadata, tpt_view_core::Metadata::default());
 }
 
 #[test]

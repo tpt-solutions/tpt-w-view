@@ -250,9 +250,8 @@ fn process_one(job: &BatchJob, input: &Path, counter: u32) -> Result<Outcome> {
         let developed = crate::raw::load_path(input)?;
         (developed.image, developed.metadata, None)
     } else if crate::heic::is_heic_path(input) {
-        // HEIC metadata (EXIF inside the container) is not read yet, so output is unannotated.
-        let image = crate::heic::load_path(input)?;
-        (image, crate::metadata::Metadata::default(), None)
+        let decoded = crate::heic::load_path(input)?;
+        (decoded.image, decoded.metadata, None)
     } else {
         let bytes = std::fs::read(input)?;
         let backend = StdBackend;

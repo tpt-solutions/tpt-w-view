@@ -99,8 +99,8 @@ fn load_oriented(path: &Path) -> CmdResult<(DynamicImage, tpt_view_core::Metadat
         return Ok((developed.image, developed.metadata));
     }
     if tpt_view_core::heic::is_heic_path(path) {
-        let image = tpt_view_core::heic::load_path(path).map_err(err)?;
-        return Ok((image, tpt_view_core::Metadata::default()));
+        let decoded = tpt_view_core::heic::load_path(path).map_err(err)?;
+        return Ok((decoded.image, decoded.metadata));
     }
     let bytes = std::fs::read(path).map_err(err)?;
     let decoded = StdBackend.decode(&bytes).map_err(err)?;
@@ -129,12 +129,12 @@ fn image_info(path: String) -> CmdResult<ipc::InfoDto> {
     let path = ipc::validate_image_file(&path)?;
     let (width, height, format, meta) = if tpt_view_core::heic::is_heic_path(&path) {
         // HEIF headers can be read without decoding, but the image crate cannot probe them.
-        let image = tpt_view_core::heic::load_path(&path).map_err(err)?;
+        let decoded = tpt_view_core::heic::load_path(&path).map_err(err)?;
         (
-            image.width(),
-            image.height(),
+            decoded.image.width(),
+            decoded.image.height(),
             "HEIF".to_string(),
-            tpt_view_core::Metadata::default(),
+            decoded.metadata,
         )
     } else if tpt_view_core::raw::is_raw_path(&path) {
         // RAW files are developed to learn their size, so this costs a full decode.

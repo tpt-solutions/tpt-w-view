@@ -11,6 +11,6 @@ repository.workspace = true
 [dependencies]
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "bmp", "tiff", "webp", "avif", "avif-native"] }
 kamadak-exif = "0.6"
-libheif-rs = "3"
+libheif-rs = { version = "3", features = ["embedded-libheif"] }
 notify = "8"
 rawler = "0.7.0"

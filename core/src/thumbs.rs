@@ -93,7 +93,7 @@ impl ThumbnailCache {
         let source = if crate::raw::is_raw_path(&entry.path) {
             crate::raw::load_path(&entry.path)?.image
         } else if crate::heic::is_heic_path(&entry.path) {
-            crate::heic::load_path(&entry.path)?
+            crate::heic::load_path(&entry.path)?.image
         } else {
             let bytes = std::fs::read(&entry.path)?;
             StdBackend.decode(&bytes)?.image
