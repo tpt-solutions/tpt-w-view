@@ -1,0 +1,31 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
+<!-- Copyright (c) 2026 TPT Solutions -->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>tpt-view</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="shell">
+      <header id="toolbar" role="toolbar" aria-label="Main"></header>
+      <nav id="crumbs" aria-label="Folder path" hidden></nav>
+      <div id="workspace">
+        <main id="main">
+          <section id="browse" aria-label="Thumbnail browser"></section>
+          <section id="view" aria-label="Image viewer" hidden></section>
+        </main>
+        <aside id="sidebar" aria-label="Image panel" hidden></aside>
+      </div>
+      <footer id="statusbar">
+        <span id="status-text" role="status"></span>
+        <span id="zoom-text"></span>
+      </footer>
+    </div>
+    <div id="toasts" aria-live="polite"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
