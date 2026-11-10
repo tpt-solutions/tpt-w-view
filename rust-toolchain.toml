@@ -1,0 +1,6 @@
+# Pinned toolchain for reproducible builds. MSRV is enforced separately via
+# `rust-version` in the workspace Cargo.toml.
+[toolchain]
+channel = "1.97.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
