@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="image/avif">
+    <glob pattern="*.avif"/>
+    <glob pattern="*.AVIF"/>
+  </mime-type>
+  <mime-type type="image/bmp">
+    <glob pattern="*.bmp"/>
+    <glob pattern="*.BMP"/>
+  </mime-type>
+  <mime-type type="image/gif">
+    <glob pattern="*.gif"/>
+    <glob pattern="*.GIF"/>
+  </mime-type>
+  <mime-type type="image/heic">
+    <glob pattern="*.heic"/>
+    <glob pattern="*.HEIC"/>
+  </mime-type>
+  <mime-type type="image/heif">
+    <glob pattern="*.heif"/>
+    <glob pattern="*.HEIF"/>
+  </mime-type>
+  <mime-type type="image/jpeg">
+    <glob pattern="*.jpg"/>
+    <glob pattern="*.JPG"/>
+    <glob pattern="*.jpeg"/>
+    <glob pattern="*.JPEG"/>
+  </mime-type>
+  <mime-type type="image/png">
+    <glob pattern="*.png"/>
+    <glob pattern="*.PNG"/>
+  </mime-type>
+  <mime-type type="image/tiff">
+    <glob pattern="*.tif"/>
+    <glob pattern="*.TIF"/>
+    <glob pattern="*.tiff"/>
+    <glob pattern="*.TIFF"/>
+  </mime-type>
+  <mime-type type="image/webp">
+    <glob pattern="*.webp"/>
+    <glob pattern="*.WEBP"/>
+  </mime-type>
+  <mime-type type="image/x-adobe-dng">
+    <glob pattern="*.dng"/>
+    <glob pattern="*.DNG"/>
+  </mime-type>
+  <mime-type type="image/x-canon-cr2">
+    <glob pattern="*.cr2"/>
+    <glob pattern="*.CR2"/>
+  </mime-type>
+  <mime-type type="image/x-canon-cr3">
+    <glob pattern="*.cr3"/>
+    <glob pattern="*.CR3"/>
+  </mime-type>
+  <mime-type type="image/x-fuji-raf">
+    <glob pattern="*.raf"/>
+    <glob pattern="*.RAF"/>
+  </mime-type>
+  <mime-type type="image/x-nikon-nef">
+    <glob pattern="*.nef"/>
+    <glob pattern="*.NEF"/>
+  </mime-type>
+  <mime-type type="image/x-olympus-orf">
+    <glob pattern="*.orf"/>
+    <glob pattern="*.ORF"/>
+  </mime-type>
+  <mime-type type="image/x-panasonic-rw2">
+    <glob pattern="*.rw2"/>
+    <glob pattern="*.RW2"/>
+  </mime-type>
+  <mime-type type="image/x-pentax-pef">
+    <glob pattern="*.pef"/>
+    <glob pattern="*.PEF"/>
+  </mime-type>
+  <mime-type type="image/x-samsung-srw">
+    <glob pattern="*.srw"/>
+    <glob pattern="*.SRW"/>
+  </mime-type>
+  <mime-type type="image/x-sony-arw">
+    <glob pattern="*.arw"/>
+    <glob pattern="*.ARW"/>
+  </mime-type>
+</mime-info>

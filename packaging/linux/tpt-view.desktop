@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=tpt-view
+GenericName=Image Viewer
+Comment=Fast image viewer and batch converter
+Exec=tpt-view %F
+Icon=tpt-view
+Terminal=false
+Categories=Graphics;Viewer;Photography;
+Keywords=image;photo;viewer;convert;batch;
+StartupNotify=true
+StartupWMClass=tpt-view
+MimeType=image/avif;image/bmp;image/gif;image/heic;image/heif;image/jpeg;image/png;image/tiff;image/webp;image/x-adobe-dng;image/x-canon-cr2;image/x-canon-cr3;image/x-fuji-raf;image/x-nikon-nef;image/x-olympus-orf;image/x-panasonic-rw2;image/x-pentax-pef;image/x-samsung-srw;image/x-sony-arw;
