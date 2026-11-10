@@ -1,0 +1,15 @@
+[package]
+name = "tpt-view-render"
+description = "GPU rendering for tpt-view: tiled textures, sampling pipeline and offscreen readback (Phase 2)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+tpt-view-core = { path = "../core" }
+image = { version = "0.25", default-features = false }
+wgpu = "30"
+pollster = "0.4"
