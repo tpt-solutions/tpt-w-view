@@ -1,0 +1,90 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "tpt-view",
+  "version": "0.1.0",
+  "identifier": "com.tptsolutions.tptview",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "tpt-view",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 640,
+        "minHeight": 400
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Graphics and Design",
+    "shortDescription": "Fast image viewer and batch converter",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.ico"
+    ],
+    "resources": [
+      "../LICENSE-MIT",
+      "../LICENSE-APACHE"
+    ],
+    "fileAssociations": [
+      {
+        "ext": [
+          "jpg",
+          "jpeg",
+          "png",
+          "gif",
+          "bmp",
+          "tif",
+          "tiff",
+          "webp",
+          "cr2",
+          "cr3",
+          "nef",
+          "arw",
+          "dng",
+          "orf",
+          "raf",
+          "rw2",
+          "pef",
+          "srw"
+        ],
+        "name": "Image",
+        "description": "Image file",
+        "role": "Viewer",
+        "rank": "Alternate"
+      }
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0"
+        ],
+        "files": {
+          "/usr/share/applications/tpt-view.desktop": "../packaging/linux/tpt-view.desktop",
+          "/usr/share/mime/packages/tpt-view.xml": "../packaging/linux/tpt-view-mime.xml"
+        }
+      }
+    }
+  }
+}
