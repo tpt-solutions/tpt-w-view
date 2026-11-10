@@ -1,0 +1,16 @@
+[package]
+name = "tpt-view-archon-platform"
+description = "tpt-view Archon backend (scoped integration, gated behind the `archon` feature)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[features]
+# Off by default so Windows/Linux v1 builds never depend on Archon.
+archon = []
+
+[dependencies]
+tpt-view-core = { version = "0.1.0", path = "../core" }

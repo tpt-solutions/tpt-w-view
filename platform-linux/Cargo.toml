@@ -1,0 +1,12 @@
+[package]
+name = "tpt-view-linux-platform"
+description = "tpt-view linux platform integration."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+tpt-view-core = { path = "../core" }
