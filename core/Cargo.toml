@@ -1,0 +1,16 @@
+[package]
+name = "tpt-view-core"
+description = "Image decode engine, metadata extraction and shared traits for tpt-view."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "bmp", "tiff", "webp", "avif", "avif-native"] }
+kamadak-exif = "0.6"
+libheif-rs = "3"
+notify = "8"
+rawler = "0.7.0"
