@@ -35,198 +35,232 @@ Decisions locked in for this roadmap:
   documents this scope and proposes upstream primitives (a directory/file-aware `Resource`
   variant, a real GPU/texture resource) that could deepen the integration later.
 
+Legend: `[x]` done in this repo · `[~]` partly done (note says what is missing) · `[ ]` not started
+or needs something outside this repo (a person, real hardware, a native library, or an account).
+
 ---
 
 ## Status Summary
 
 | Phase | Area | Progress |
 |-------|------|----------|
-| 0  | Project Setup & Licensing                          | ❌ Not Started |
-| 1  | Core Image Decode Engine                           | ❌ Not Started |
-| 2  | GPU-Accelerated Rendering (wgpu)                   | ❌ Not Started |
-| 3  | Directory Browsing & Persistent Thumbnail Cache    | ❌ Not Started |
-| 4  | Basic Editing Tools                                | ❌ Not Started |
-| 5  | Batch Conversion & Rename Engine (Core)            | ❌ Not Started |
-| 6  | CLI (Scriptable Batch Mode)                        | ❌ Not Started |
-| 7  | Tauri Shell & IPC Layer                             | ❌ Not Started |
-| 8  | Frontend — Viewer                                   | ❌ Not Started |
-| 9  | Frontend — Browser & Batch UI                       | ❌ Not Started |
-| 10 | Windows Platform Integration                        | ❌ Not Started |
-| 11 | Linux Platform Integration                          | ❌ Not Started |
-| 12 | Archon Support (Scoped, Real Integration)           | ❌ Not Started |
-| 13 | Performance & Polish                                | ❌ Not Started |
-| 14 | Testing & QA                                        | ❌ Not Started |
-| 15 | Release v1                                          | ❌ Not Started |
+| 0  | Project Setup & Licensing                          | 🟡 Mostly done (repo hosting outstanding) |
+| 1  | Core Image Decode Engine                           | 🟡 Partial (common formats, AVIF, RAW, EXIF/IPTC/XMP done; HEIC/streaming open) |
+| 2  | GPU-Accelerated Rendering (wgpu)                   | 🟡 Partial (offscreen tiled renderer tested on GPU; not yet shown in the app) |
+| 3  | Directory Browsing & Persistent Thumbnail Cache    | ✅ Done (folder tree and mip-based thumbnails are backlog-level extras) |
+| 4  | Basic Editing Tools                                | ✅ Done (numeric crop; on-canvas crop selection pending) |
+| 5  | Batch Conversion & Rename Engine (Core)            | 🟡 Partial (AVIF output and IPTC/XMP preservation open) |
+| 6  | CLI (Scriptable Batch Mode)                        | ✅ Done |
+| 7  | Tauri Shell & IPC Layer                            | ✅ Done (built and launched locally; installer verification in progress) |
+| 8  | Frontend — Viewer                                  | 🟡 Partial (Canvas 2D viewer; wgpu display not wired) |
+| 9  | Frontend — Browser & Batch UI                      | 🟡 Partial (no folder tree; settings location fixed) |
+| 10 | Windows Platform Integration                       | 🟡 Partial (registration plan written; not applied on a real machine) |
+| 11 | Linux Platform Integration                         | 🟡 Partial (desktop/MIME files generated; not tested on a distro) |
+| 12 | Archon Support (Scoped, Real Integration)          | 🟡 Partial (path→block layer and design doc; capability backend open) |
+| 13 | Performance & Polish                               | 🟡 Partial (crash logging, benchmarks; branding and startup profiling open) |
+| 14 | Testing & QA                                       | 🟡 Partial (automated tests done; manual QA open) |
+| 15 | Release v1                                         | 🟡 Partial (docs and changelog done; installers built locally; tag and publish open) |
+
+Automated tests at the time of writing: 122 passing across the workspace (plus one ignored
+regeneration helper), `cargo fmt --check` and `cargo clippy -D warnings` clean, `tsc --noEmit` clean.
 
 ---
 
 ## Phase 0 — Project Setup & Licensing
-- [ ] Init git repo, `.gitignore` (Rust + Node/Tauri targets + Windows/Linux build artifacts)
-- [ ] Add `LICENSE-MIT` and `LICENSE-APACHE` (dual license, TPT Solutions copyright)
-- [ ] Add SPDX dual-license header/notice convention for source files
-- [ ] Cargo workspace: `core/` (image decode, thumbnail cache, batch engine, shared traits),
-      `platform-windows/`, `platform-linux/`, `platform-archon/`, `cli/`, `src-tauri/`, `src/`
-      (TS/HTML frontend, Vite); shared `[workspace.package]` (`license`, `authors = ["TPT
-      Solutions"]`, `repository`)
-- [ ] `rust-toolchain.toml` (MSRV pin), `rustfmt.toml`, `clippy.toml`
-- [ ] Configure `tauri.conf.json` (app id, window defaults, bundle identifiers)
-- [ ] TypeScript config (tsconfig, Vite, no framework)
-- [ ] `README.md` (from spec.txt), build instructions, license badges
-- [ ] Set up CI (GitHub Actions, build+lint+test on Windows + Linux runners)
-- [ ] Repo hosting under `tpt-solutions` GitHub org
+- [x] Init git repo, `.gitignore` (Rust + Node/Tauri targets + Windows/Linux build artifacts)
+- [x] Add `LICENSE-MIT` and `LICENSE-APACHE` (dual license, TPT Solutions copyright)
+- [x] Add SPDX dual-license header/notice convention for source files (`CONTRIBUTING.md`)
+- [x] Cargo workspace: `core/`, `platform-windows/`, `platform-linux/`, `platform-archon/`, `cli/`,
+      `render/`, `src-tauri/`, and `src/` (TS/HTML frontend, Vite); shared `[workspace.package]`
+- [x] `rust-toolchain.toml` (MSRV pin), `rustfmt.toml`, `clippy.toml`
+- [x] `tauri.conf.json` (app id, window defaults, bundle identifiers, file associations)
+- [x] TypeScript config (tsconfig, Vite, no framework)
+- [x] `README.md` (from spec.txt), build instructions, license badge, documentation links
+- [x] CI workflow (GitHub Actions, build+lint+test on Windows + Linux runners) —
+      `.github/workflows/ci.yml` is written but has not run on GitHub
+- [ ] Repo hosting under `tpt-solutions` GitHub org — external; not done from this repo
 
 ## Phase 1 — Core Image Decode Engine
-- [ ] Integrate `image` crate for common raster formats: JPEG, PNG, GIF (including animated),
-      BMP, TIFF, WebP
-- [ ] AVIF decode support (e.g. `libavif`/`ravif` bindings)
-- [ ] HEIC/HEIF decode support
-- [ ] RAW camera format decode (e.g. `rawler` or equivalent), broad camera-model coverage,
-      demosaicing pipeline
-- [ ] EXIF/IPTC/XMP metadata extraction (orientation, camera info, GPS, timestamps)
-- [ ] Streaming/progressive decode path for very large (gigapixel-scale) images, avoiding full
-      in-memory decode where possible
-- [ ] Shared `ImageBackend`-style trait (decode, metadata, thumbnail-source extraction) so
-      platform crates and the Archon backend share one interface
-- [ ] Unit tests: decode correctness across format matrix, corrupt-file handling, RAW edge cases
-      (multiple camera manufacturers), EXIF orientation correctness
+- [x] Integrate `image` crate for common raster formats: JPEG, PNG, GIF (including animated),
+      BMP, TIFF, WebP (`core/src/codec.rs`)
+- [x] AVIF decode and encode: dav1d built from source (through `dav1d-sys`, meson + ninja + NASM +
+      pkgconf) and the rav1e-based encoder. Covered by `core/tests/avif.rs` and the format matrix.
+- [~] HEIC/HEIF decode — blocked on Windows. libde265 is built and installed under
+      `~\tools\libde265` (approved and done). `libheif-sys` on MSVC does not use its embedded build;
+      it needs libheif from vcpkg. Cloning and bootstrapping vcpkg was denied by the auto-mode
+      permission check, so libheif is not installed. HEIC is not wired into the code yet.
+- [~] RAW camera decode via `rawler` 0.7 (`core/src/raw.rs`): CR2, CR3, NEF, ARW, DNG, ORF, RAF,
+      RW2, PEF, SRW. Developed through rawler's pipeline (demosaic, white balance, sRGB). Tested on
+      synthetic Bayer data and error paths only — **no real camera sample has been run**, and
+      coverage depends on rawler's camera support.
+- [~] EXIF/IPTC/XMP metadata — EXIF (orientation, make/model, DateTimeOriginal, GPS) and
+      IPTC-IIM plus XMP text fields (title, description, creator, copyright, keywords) are read
+      from JPEG (`core/src/text_meta.rs`). PNG/TIFF XMP and writing metadata are not done.
+- [ ] Streaming/progressive decode path for very large (gigapixel-scale) images — not started
+- [x] Shared `ImageBackend`-style trait (probe, decode, decode_frames, read_metadata) so
+      platform crates and the Archon backend share one interface (`core/src/backend.rs`)
+- [~] Unit tests: decode correctness across the format matrix (PNG/BMP/TIFF/WebP/JPEG/GIF),
+      corrupt-file handling (truncation, byte-flip fuzz, non-image input), EXIF orientation (all 8),
+      metadata parsing. RAW edge cases across manufacturers are pending real samples.
 
 ## Phase 2 — GPU-Accelerated Rendering (wgpu)
-- [ ] wgpu render pipeline for instant on-screen display of decoded images
-- [ ] Texture upload/streaming path for huge images (tiled upload, mipmap generation)
-- [ ] GPU-accelerated pan/zoom with high-quality resampling (bilinear/bicubic/Lanczos on GPU)
-- [ ] Backend selection: Vulkan on Linux, Vulkan/DX12 on Windows, graceful fallback path
-- [ ] HDR/wide-gamut display consideration (document scope; full HDR pipeline may defer)
-- [ ] Frame-time/latency benchmarks for large-image display and rapid next/prev navigation
+- [~] wgpu render pipeline (`render/src/lib.rs`): textured quads sampled per tile, offscreen target
+      with readback. Tested on a real adapter (Intel Iris Xe) with pixel-exact checks. Drawing to
+      a window surface in the desktop app is not wired (see Phase 8).
+- [~] Tiled texture upload (2048 px tiles, seams verified). Mip-chain generation on the GPU is not
+      done; mip-level selection math exists in `core/src/tiling.rs`.
+- [~] GPU pan/zoom with nearest and linear sampling. Bicubic and Lanczos on the GPU are not done.
+- [x] Backend selection: primary backends by default, `TPT_VIEW_BACKEND` override, software
+      fallback adapter, and a clear `NoAdapter` error for CPU fallback.
+- [x] HDR/wide-gamut scope recorded: v1 is SDR sRGB; deferral reasons and a later plan in
+      `docs/hdr-scope.md`.
+- [x] Frame-time benchmark: `render/examples/frame_bench.rs` (≈5 ms per 1080p frame at 1:1 and
+      ≈15 ms at fit-to-window on integrated graphics, including readback).
 
 ## Phase 3 — Directory Browsing & Persistent Thumbnail Cache
-- [ ] Directory scanning implementation (own code — not derived from Archon, which has no
-      filesystem semantics)
-- [ ] Filesystem watcher for live directory updates (new/removed/renamed files)
-- [ ] Thumbnail generation pipeline built on Phase 1's decode engine
-- [ ] Persistent on-disk thumbnail cache (e.g. SQLite or cache-dir + index), keyed by
-      path+mtime+size, with invalidation on file change
-- [ ] Instant re-open of previously-browsed large directories (cache hit path measured/benchmarked)
-- [ ] Virtualized/incremental grid data structure supporting tens of thousands of entries without
-      full upfront thumbnail generation
-- [ ] Unit/integration tests: cache invalidation correctness, watcher event handling, cold-start
-      vs warm-cache directory open benchmarks
+- [x] Directory scanning implementation (own code — not derived from Archon) (`core/src/scan.rs`)
+- [x] Filesystem watcher for live directory updates, with coalescing (`core/src/watch.rs`)
+- [x] Thumbnail generation pipeline built on Phase 1's decode engine (`core/src/thumbs.rs`)
+- [x] Persistent on-disk thumbnail cache, keyed by path+size+mtime+edge length, with invalidation on
+      file change and pruning (`<cache_dir>/<fnv1a>.png`, file-based — not SQLite)
+- [x] Instant re-open benchmarked: `core/examples/cache_bench.rs` — 200 images, cold 2.07 s versus
+      warm 6.5 ms
+- [x] Virtualized grid data structure (`core/src/grid.rs`), mirrored in the browser
+- [x] Tests: cache invalidation, scan filtering, watcher events, cold versus warm benchmark
 
 ## Phase 4 — Basic Editing Tools
-- [ ] Crop tool (freeform + fixed aspect ratios)
-- [ ] Rotate (90°-step) and arbitrary-angle rotate, horizontal/vertical flip
-- [ ] Resize with selectable resampling algorithm/quality
-- [ ] Basic color/levels adjustment: brightness, contrast, saturation, basic curves/levels
-- [ ] Non-destructive edit session (edits applied on save, original preserved until overwrite
-      confirmed, or explicit "save as")
-- [ ] Undo/redo stack for the active edit session
-- [ ] Unit tests: edit operation correctness (pixel-level spot checks), non-destructive save flow
+- [~] Crop tool — numeric crop (x, y, width, height) in the edit panel. Freeform and fixed-ratio
+      crop with an on-canvas selection are not built.
+- [x] Rotate (90°-step and arbitrary angle with optional canvas expand), horizontal/vertical flip
+- [x] Resize with selectable resampling filter (nearest, bilinear, bicubic, Lanczos3)
+- [x] Brightness, contrast, saturation, levels (black/white/gamma) and tone curves
+- [x] Non-destructive edit session: originals untouched; save as a new file or overwrite behind an
+      explicit confirmation enforced in core (`core/src/edit.rs`)
+- [x] Undo/redo stack (bounded at 32 snapshots)
+- [x] Unit tests: pixel-level spot checks per operation, undo/redo, failed-op safety, save flow
 
 ## Phase 5 — Batch Conversion & Rename Engine (Core)
-- [ ] Batch format conversion: any Phase 1 source format → common output formats (JPEG, PNG,
-      WebP, AVIF, TIFF, BMP)
-- [ ] Batch resize as part of conversion (target dimensions/max-edge/percentage scaling)
-- [ ] Pattern-based batch rename engine (counter, EXIF date/camera tokens, original name tokens,
-      case transforms)
-- [ ] Metadata preservation vs stripping options (EXIF/IPTC/XMP) per batch job
-- [ ] Progress reporting and cancellable jobs (per-file and overall progress)
-- [ ] Job engine designed as a shared library so both the GUI (Phase 9) and CLI (Phase 6) drive
-      the same code path
-- [ ] Unit tests: conversion round-trips across format matrix, rename pattern correctness,
-      metadata preservation/stripping verification, cancellation mid-job
+- [x] Batch format conversion: JPEG, PNG, WebP, TIFF, BMP and AVIF output.
+- [x] Batch resize (exact, max-edge that never upscales, percentage)
+- [x] Pattern-based rename engine (`{counter:N}`, `{name:lower|upper}`, `{date}`, `{camera}`)
+      (`core/src/rename.rs`)
+- [~] Metadata policy per job: strip (default) or preserve EXIF for JPEG→JPEG only
+      (`core/src/jpeg_meta.rs`). IPTC/XMP are not carried over, and EXIF is not carried between formats.
+- [x] Progress reporting and cancellable jobs (cancellation is checked between files)
+- [x] Job engine shared by the GUI and CLI (`core/src/batch.rs`)
+- [x] Tests: format matrix (6 sources × 5 outputs), rename correctness, EXIF preserve/strip,
+      cancellation between files, invalid-settings rejection
 
 ## Phase 6 — CLI (Scriptable Batch Mode)
-- [ ] Standalone CLI binary invoking the Phase 5 batch engine headlessly
-- [ ] Argument syntax for convert/resize/rename operations (input glob/dir, output format,
-      rename pattern, metadata options)
-- [ ] Scriptable exit codes and machine-readable output mode (for automation pipelines)
-- [ ] CLI help/usage documentation
-- [ ] Integration tests: CLI invocation matrix against the same fixtures used for Phase 5 engine
-      tests
+- [x] Standalone CLI binary invoking the Phase 5 batch engine headlessly (`cli/src/main.rs`)
+- [x] Argument syntax for convert/resize/rename/metadata options (shell expands globs)
+- [x] Scriptable exit codes (0, 1, 2, 3, 130) and `--json` report
+- [x] Ctrl+C cancels between files and exits 130 (the handler itself is not covered by an
+      automated test)
+- [x] CLI help (`--help`) and reference (`docs/cli.md`)
+- [x] Integration tests: 9-case CLI matrix (formats, resize modes, rename, overwrite, JSON, errors,
+      exit codes) in `cli/tests/cli_matrix.rs`
 
 ## Phase 7 — Tauri Shell & IPC Layer
-- [ ] Tauri app scaffold wired to `core` (decode engine, thumbnail cache, batch engine)
-- [ ] Command layer: open directory/file, decode/render requests, editing operations, batch job
-      control
-- [ ] Event push from Rust to frontend (thumbnail-ready, decode-complete, batch progress)
-- [ ] File association / "open with" launch handling (path passed as CLI arg to the GUI binary)
-- [ ] IPC boundary tests (command validation, no arbitrary path escape beyond intended scope)
+- [x] Tauri app scaffold wired to `core` (`src-tauri/`), with capabilities and CSP
+- [x] Command layer: list directory, thumbnails, image info, preview, edit session commands,
+      batch run and cancel, directory watch, cache clear, crash-logging toggle
+- [x] Event push from Rust to frontend: `batch-progress`, `dir-changed`
+- [~] File association / launch handling — launch argument opens the file or folder, and bundle
+      `fileAssociations` are configured. Verified only as a build; not yet tested on an installed
+      OS.
+- [x] IPC boundary tests: path validation (absolute, no `..`, no NUL, existence and type), output
+      extension checks, DTO parsing, launch-argument selection (`src-tauri/src/ipc.rs`)
 
 ## Phase 8 — Frontend — Viewer
-- [ ] App shell (plain TS/HTML + Vite), light/dark theme
-- [ ] Main viewer: pan/zoom, fit-to-window/actual-size toggle, fullscreen mode
-- [ ] Slideshow mode (configurable interval, transition)
-- [ ] Keyboard and mouse navigation (next/prev, zoom shortcuts, rotate shortcuts)
-- [ ] Image info/EXIF panel (camera, exposure, GPS if present, file info)
-- [ ] Wire viewer to Phase 2's wgpu render pipeline and Phase 1's decode engine via IPC
+- [x] App shell (plain TS/HTML + Vite), light/dark/system theme
+- [x] Main viewer: pan (drag), zoom (wheel and keys), fit-to-window (never enlarges), actual size,
+      fullscreen (`src/viewer.ts`)
+- [~] Slideshow — fixed 4-second interval, no transitions, interval not configurable
+- [x] Keyboard and mouse navigation (next/prev, zoom, fit, actual, rotate-as-edit); full table in
+      `docs/user-guide.md`
+- [x] Image info/EXIF panel, including IPTC/XMP text fields (`src/info-panel.ts`)
+- [~] Wire viewer to the wgpu renderer — decode is via IPC, but drawing is Canvas 2D. Hooking the
+      renderer in needs a decision on window surface versus per-frame readback.
 
 ## Phase 9 — Frontend — Browser & Batch UI
-- [ ] Thumbnail grid browser view wired to Phase 3's cache, virtualized scrolling
-- [ ] Folder tree / breadcrumb navigation
-- [ ] Multi-select for batch target selection
-- [ ] Batch convert/rename dialog wired to Phase 5's engine (format, rename pattern, metadata
-      options, progress UI)
-- [ ] Basic editing tool UI (crop/rotate/resize/color adjust) wired to Phase 4
-- [ ] Settings: default output format/location, thumbnail cache size/location, rename pattern
-      presets
+- [x] Thumbnail grid browser: virtualized, lazy thumbnails with a concurrency limit, selection
+- [~] Folder navigation — breadcrumbs with click-to-jump and parent navigation. A folder tree in
+      the sidebar is not built.
+- [x] Multi-select (click, Ctrl, Shift, Ctrl+A)
+- [x] Batch convert/rename dialog wired to Phase 5 (format, resize, rename with presets, EXIF,
+      overwrite, live progress, cancel, per-file results)
+- [~] Basic editing UI (`src/edit-panel.ts`) — numeric crop only; sliders and levels are wired
+- [~] Settings dialog (`src/settings-dialog.ts`): default format, JPEG quality, thumbnail size,
+      rename presets, theme, crash logging, cache clear. The output folder is picked per batch
+      rather than stored as a default.
 
 ## Phase 10 — Windows Platform Integration
-- [ ] File association / "set as default image viewer" registration flow
-- [ ] Explorer thumbnail/shell integration considerations (does not need to replace Explorer's
-      own thumbnailer, but should not conflict with it)
-- [ ] Windows-specific packaging (installer prerequisites, code signing consideration)
-- [ ] Manual QA: Windows 10/11, GPU backend verification (Vulkan/DX12), file association flow
+- [~] File association / default-app registration: `platform-windows/src/file_assoc.rs` builds the
+      per-user registry plan as data (tested). `apply()` is compiled on Windows but has not been run,
+      because it writes to HKCU. Windows does not allow apps to set the default themselves, so the
+      plan registers capabilities and leaves the choice to the user.
+- [ ] Explorer thumbnail/shell integration — no shell extension is built, so this does not conflict
+      with Explorer. A short decision note is still missing.
+- [~] Windows packaging: NSIS installer builds locally (`tpt-view_0.1.0_x64-setup.exe`, per-user
+      install, WebView2 bootstrapper, file associations). Not yet installed and run on a clean machine.
+      Code signing is out of scope for v1 (decided by the project owner).
+- [ ] Manual QA: Windows 10/11, GPU backend verification (Vulkan/DX12), file association flow —
+      needs people and machines
 
 ## Phase 11 — Linux Platform Integration
-- [ ] Vulkan/OpenGL backend verification across common distros
-- [ ] MIME type / file-association integration (freedesktop.org `.desktop` entry, MIME database)
-- [ ] Linux-specific packaging considerations (see Phase 15 for installer formats)
-- [ ] Manual QA: at least one GNOME and one KDE session, X11 and Wayland
+- [ ] Vulkan/OpenGL backend verification across common distros — needs hardware and distros
+- [x] MIME type / file-association integration: `.desktop` entry and shared-mime-info package
+      generated by `platform-linux` and kept in sync by a test (`packaging/linux/`)
+- [~] Linux packaging: `.deb` with desktop and MIME files and dependencies configured; AppImage
+      target enabled. Not built on Linux here.
+- [ ] Manual QA: GNOME and KDE, X11 and Wayland — needs sessions
 
 ## Phase 12 — Archon Support (Scoped, Real Integration)
-- [ ] `platform-archon` crate implementing the Phase 1 `ImageBackend`-style trait, with its own
-      directory-walk/watch layer (Archon has no filesystem semantics to build on)
-- [ ] Own path→block-id mapping layer (Archon's `Resource::Page` is a raw block id, not a file
-      identity — tpt-view must own this mapping)
-- [ ] Layer the Phase 3 thumbnail/decode pipeline over Archon's real `UnifiedPageCache`/
-      `CorePageCache` (`map_read`/`map_write`/`unmap`), used as a generic zero-copy cache for
-      decoded thumbnail/pixel bytes keyed by block id — mirroring tpt-vault's pattern of layering
-      its own crypto engine over the same page cache
-      obtained via `CapabilityIssuer::mint`-issued capabilities
-- [ ] `docs/archon-design.md`: documents this real-vs-aspirational scope (no filesystem, no image
-      decode, no GPU/texture support exists upstream in Archon today), and proposes future
-      upstream primitives — a directory/file-aware `Resource` variant, a real GPU/texture
-      resource — that would let a future version integrate more deeply
-- [ ] Cargo feature flag (`archon`) gating this backend so it never blocks Windows/Linux v1
-- [ ] Unit/integration tests against `tpt-archon-bridge`'s test capability issuer (CI-safe, no
-      real Archon kernel required)
+- [ ] `platform-archon` backend implementing the `ImageBackend` trait over Archon — not started
+      (needs `tpt-archon-bridge` as a dependency)
+- [x] Own path→block-id mapping layer (`platform-archon/src/path_map.rs`): never reuses ids,
+      retires ranges on growth or removal, tested without Archon
+- [ ] Layer the thumbnail/decode pipeline over Archon's `UnifiedPageCache`/`CorePageCache` —
+      not started
+- [x] `docs/archon-design.md`: real-versus-aspirational scope, proposed upstream primitives, test
+      strategy, open questions
+- [x] Cargo feature flag (`archon`) gating the backend; off by default, so Windows/Linux builds never
+      depend on it
+- [ ] Unit/integration tests against `tpt-archon-bridge`'s test capability issuer — not started
 
 ## Phase 13 — Performance & Polish
-- [ ] Benchmark huge/gigapixel-scale image decode and display latency
-- [ ] Startup time profiling (cold start, warm thumbnail-cache start)
-- [ ] App icon, branding assets (TPT Solutions)
-- [ ] Accessibility pass (keyboard navigation, screen reader labels across all views)
-- [ ] Crash reporting / local error logging (opt-in only)
+- [~] Benchmark huge/gigapixel-scale decode and display latency — frame-time benchmark exists
+      (6000×4000 tiles); no gigapixel decode benchmark yet
+- [ ] Startup time profiling (cold start, warm thumbnail-cache start) — not done
+- [~] App icon: a generated placeholder ("t" on blue) is in `src-tauri/icons/`. TPT Solutions branding
+      assets are still to come.
+- [~] Accessibility pass — toolbar and dialogs have labels and roles; keyboard navigation covers the
+      main flows. Screen-reader testing has not been done.
+- [x] Crash reporting / local error logging (opt-in only): off by default; a panic hook writes to
+      the app log directory only when enabled (`src-tauri/src/diagnostics.rs`)
 
 ## Phase 14 — Testing & QA
-- [ ] Unit tests: decode engine (format matrix, RAW/HEIC edge cases), batch conversion round-
-      trips, thumbnail cache invalidation, edit operations
-- [ ] Integration tests: directory browse → thumbnail → open → edit → save, batch job end-to-end,
-      CLI invocation matrix
+- [x] Unit tests: decode engine, batch conversion, thumbnail cache, edit operations, rename, grid,
+      tiling, watcher, RAW, metadata, IPC validation
+- [x] Integration tests: browse → thumbnail → edit → save → batch (`core/tests/pipeline.rs`),
+      CLI invocation matrix (`cli/tests/cli_matrix.rs`), format matrix, EXIF and IPTC/XMP end-to-end
 - [ ] Manual QA: Windows 10/11 (GPU backend, file association, batch/CLI flows)
-- [ ] Manual QA: Linux (X11 + Wayland, at least one GNOME and one KDE session)
-- [ ] Performance QA: directories with tens of thousands of images (cold-start and warm-cache
-      scroll performance)
-- [ ] Security review: batch/CLI path handling (no path traversal beyond intended scope), IPC
-      command validation, Archon capability boundary (no capability forgery/reuse)
+- [ ] Manual QA: Linux (X11 + Wayland, GNOME and KDE)
+- [~] Performance QA: directories with tens of thousands of images — the cache benchmark covers 200
+      images. A run at tens of thousands is still to do.
+- [~] Security review: `docs/security-review.md` covers path handling, IPC, overwrite safety and
+      crash logging, with open items (file-access scoping, fuzzing, memory budget)
 
 ## Phase 15 — Release v1
-- [ ] Finalize versioning scheme (SemVer) and changelog process
-- [ ] Windows installer (MSI/NSIS via Tauri bundler)
-- [ ] Linux packaging (.deb/.rpm/AppImage via Tauri bundler)
-- [ ] Publish LICENSE files + notices in release artifacts
-- [ ] User-facing docs (install guide, viewer/editor guide, batch/CLI usage guide)
-- [ ] Tag v1.0.0 release, publish to GitHub (tpt-solutions org)
-- [ ] Post-release triage process for bug reports
+- [x] Versioning scheme (SemVer, pre-1.0 rules) and changelog process (`docs/versioning.md`,
+      `CHANGELOG.md`)
+- [~] Windows installer (NSIS via the Tauri bundler) — builds locally; clean-machine install not yet tested
+- [~] Linux packaging (`.deb`, AppImage) — configured; not built here
+- [x] LICENSE files included as bundle resources
+- [x] User-facing docs: install guide, user guide, CLI reference
+- [ ] Tag v1.0.0 and publish to GitHub (tpt-solutions org) — publishing, deliberately not done
+- [x] Post-release triage process (`docs/triage.md`)
 
 ---
 
@@ -239,3 +273,5 @@ Decisions locked in for this roadmap:
 - [ ] Cloud storage source integration (browse/convert from cloud-synced folders directly)
 - [ ] Real Archon-native directory/file-resource capability once upstream lands (replacing the
       hand-rolled path→block-id layer with a first-class Archon primitive)
+- [ ] HEIC decoding (needs libde265 + libheif; see Phase 1)
+- [ ] Display frames through the wgpu renderer inside the desktop app
