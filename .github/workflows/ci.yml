@@ -10,9 +10,6 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  # dav1d-sys (AVIF decode via image/avif-native) needs pkg-config on Linux and
-  # no pkg-config on Windows, so build dav1d from source there (meson + ninja + nasm).
-  SYSTEM_DEPS_DAV1D_BUILD_INTERNAL: ${{ runner.os == 'Windows' && 'always' || 'auto' }}
 
 jobs:
   rust:
@@ -21,7 +18,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest]
+        include:
+          - os: windows-latest
+            dav1d: always
+          - os: ubuntu-latest
+            dav1d: auto
+    env:
+      # dav1d-sys (AVIF decode via image/avif-native) needs pkg-config on Linux and no pkg-config
+      # on Windows, so build dav1d from source there (meson + ninja + nasm).
+      SYSTEM_DEPS_DAV1D_BUILD_INTERNAL: ${{ matrix.dav1d }}
     steps:
       - uses: actions/checkout@v4
 
