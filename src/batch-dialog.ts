@@ -22,7 +22,7 @@ const FORMATS = ["jpg", "png", "webp", "tiff", "bmp", "avif"];
 
 export function openBatchDialog(opts: BatchDialogOptions): void {
   const { settings } = opts;
-  let outputDir = "";
+  let outputDir = settings.defaultOutputDir;
   let jobId = 0;
   let unlisten: UnlistenFn | null = null;
 
@@ -49,7 +49,7 @@ export function openBatchDialog(opts: BatchDialogOptions): void {
   const counter = h("input", { type: "number", min: 0, value: 1, class: "num" }) as HTMLInputElement;
   const preserve = h("input", { type: "checkbox" }) as HTMLInputElement;
   const overwrite = h("input", { type: "checkbox" }) as HTMLInputElement;
-  const outputLabel = h("span", { class: "path", text: "No folder chosen" });
+  const outputLabel = h("span", { class: "path", text: outputDir || "No folder chosen" });
   const progress = h("progress", { max: 1, value: 0, hidden: true }) as HTMLProgressElement;
   const status = h("div", { class: "batch-status", role: "status" });
   const results = h("ul", { class: "batch-results" });

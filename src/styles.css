@@ -131,6 +131,61 @@ body {
   inset: 0;
 }
 
+#folders {
+  width: min(240px, 30vw);
+  overflow: auto;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 8px 4px;
+  font-size: 0.9rem;
+}
+
+.tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.tree-toggle {
+  width: 1.6em;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.tree-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  padding: 2px 4px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.tree-name[aria-current="true"] {
+  font-weight: 600;
+  background: var(--accent-soft, rgba(127, 127, 127, 0.2));
+}
+
+.tree-status {
+  padding: 2px 0 2px 1.6em;
+  color: var(--muted, #888);
+}
+
 #sidebar {
   width: min(300px, 40vw);
   overflow-y: auto;
@@ -292,6 +347,26 @@ input[type="range"] {
 
 .viewer-canvas.dragging {
   cursor: grabbing;
+}
+
+.empty-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  text-align: center;
+}
+
+.empty-state[hidden] {
+  display: none;
+}
+
+.viewer-canvas.cropping {
+  cursor: crosshair;
 }
 
 /* ---- sidebar panels -------------------------------------------------------------------- */
@@ -470,6 +545,10 @@ progress {
 /* ---- small screens --------------------------------------------------------------------- */
 
 @media (max-width: 640px) {
+  #folders {
+    display: none;
+  }
+
   #sidebar {
     position: absolute;
     right: 0;

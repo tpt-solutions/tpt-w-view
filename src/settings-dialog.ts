@@ -12,6 +12,7 @@ export interface SettingsDialogOptions {
   settings: Settings;
   onChange: (settings: Settings) => void;
   notify: (message: string, isError?: boolean) => void;
+  pickFolder: () => Promise<string | null>;
 }
 
 const FORMATS = ["jpg", "png", "webp", "tiff", "bmp", "avif"];
@@ -39,6 +40,36 @@ export function openSettingsDialog(opts: SettingsDialogOptions): void {
     h("option", { value: "dark" }, "Dark"),
   ) as HTMLSelectElement;
   theme.value = current.theme;
+
+  const slideshow = h("input", {
+    type: "number",
+    min: 1,
+    max: 60,
+    value: current.slideshowSeconds,
+    class: "num",
+  }) as HTMLInputElement;
+
+  let outputDir = current.defaultOutputDir;
+  const outputLabel = h("span", { class: "path", text: outputDir || "Ask each time" });
+  const chooseOutput = h("button", {
+    type: "button",
+    text: "Choose…",
+    onclick: async () => {
+      const picked = await opts.pickFolder();
+      if (picked) {
+        outputDir = picked;
+        outputLabel.textContent = picked;
+      }
+    },
+  });
+  const clearOutput = h("button", {
+    type: "button",
+    text: "Clear",
+    onclick: () => {
+      outputDir = "";
+      outputLabel.textContent = "Ask each time";
+    },
+  });
 
   const crash = h("input", { type: "checkbox" }) as HTMLInputElement;
   const crashNote = h("p", { class: "muted", text: "Off by default. When on, a crash writes a report to a local file. Nothing is sent anywhere." });
@@ -86,6 +117,8 @@ export function openSettingsDialog(opts: SettingsDialogOptions): void {
         h("label", {}, "Thumbnail size"), thumbEdge,
         h("label", {}, "Rename presets (one per line)"), presets,
         h("label", {}, "Theme"), theme,
+        h("label", {}, "Default output folder"), h("div", {}, outputLabel, " ", chooseOutput, " ", clearOutput),
+        h("label", {}, "Slideshow interval (seconds)"), slideshow,
         h("label", {}, "Crash logging"), h("div", {}, h("label", {}, crash, " Keep local crash reports"), crashNote),
         h("label", {}, "Thumbnails"), h("div", {}, clearCache, " ", cacheStatus),
       ),
@@ -99,6 +132,9 @@ export function openSettingsDialog(opts: SettingsDialogOptions): void {
     thumbEdge.value = String(DEFAULT_SETTINGS.thumbEdge);
     presets.value = DEFAULT_SETTINGS.renamePresets.join("\n");
     theme.value = DEFAULT_SETTINGS.theme;
+    slideshow.value = String(DEFAULT_SETTINGS.slideshowSeconds);
+    outputDir = DEFAULT_SETTINGS.defaultOutputDir;
+    outputLabel.textContent = "Ask each time";
   });
   cancel.addEventListener("click", close);
 
@@ -116,12 +152,19 @@ export function openSettingsDialog(opts: SettingsDialogOptions): void {
       opts.notify("JPEG quality must be a whole number from 1 to 100.", true);
       return;
     }
+    const seconds = Number(slideshow.value);
+    if (!Number.isInteger(seconds) || seconds < 1 || seconds > 60) {
+      opts.notify("Slideshow interval must be a whole number of seconds from 1 to 60.", true);
+      return;
+    }
     const next: Settings = {
       defaultFormat: format.value,
       quality: q,
       thumbEdge: Number(thumbEdge.value),
       renamePresets,
       theme: theme.value as Theme,
+      defaultOutputDir: outputDir,
+      slideshowSeconds: seconds,
     };
     try {
       await api.setCrashLogging(crash.checked);

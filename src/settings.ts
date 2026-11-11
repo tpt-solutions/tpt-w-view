@@ -12,6 +12,10 @@ export interface Settings {
   thumbEdge: number;
   renamePresets: string[];
   theme: Theme;
+  /** Pre-filled output folder for batch jobs; empty means "ask each time". */
+  defaultOutputDir: string;
+  /** Seconds each image stays on screen during a slideshow, 1..=60. */
+  slideshowSeconds: number;
 }
 
 const KEY = "tpt-view.settings";
@@ -22,6 +26,8 @@ export const DEFAULT_SETTINGS: Settings = {
   thumbEdge: 256,
   renamePresets: ["{name}", "img_{counter:03}", "{date}_{name}"],
   theme: "system",
+  defaultOutputDir: "",
+  slideshowSeconds: 4,
 };
 
 export function loadSettings(): Settings {
@@ -29,7 +35,13 @@ export function loadSettings(): Settings {
     const raw = localStorage.getItem(KEY);
     if (!raw) return { ...DEFAULT_SETTINGS };
     const parsed = JSON.parse(raw) as Partial<Settings>;
-    return { ...DEFAULT_SETTINGS, ...parsed };
+    const merged = { ...DEFAULT_SETTINGS, ...parsed };
+    // Stored values can be hand-edited; keep the slideshow timer in its supported range.
+    const seconds = Number(merged.slideshowSeconds);
+    merged.slideshowSeconds = Number.isFinite(seconds)
+      ? Math.min(60, Math.max(1, Math.round(seconds)))
+      : DEFAULT_SETTINGS.slideshowSeconds;
+    return merged;
   } catch {
     return { ...DEFAULT_SETTINGS };
   }

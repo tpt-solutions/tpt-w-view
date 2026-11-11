@@ -14,8 +14,14 @@
       <header id="toolbar" role="toolbar" aria-label="Main"></header>
       <nav id="crumbs" aria-label="Folder path" hidden></nav>
       <div id="workspace">
+        <aside id="folders" aria-label="Folder tree" hidden></aside>
         <main id="main">
           <section id="browse" aria-label="Thumbnail browser"></section>
+          <div id="empty-state" class="empty-state" hidden>
+            <h2 id="empty-title"></h2>
+            <p id="empty-text" class="muted"></p>
+            <button type="button" id="empty-open" class="primary">Open folder…</button>
+          </div>
           <section id="view" aria-label="Image viewer" hidden></section>
         </main>
         <aside id="sidebar" aria-label="Image panel" hidden></aside>

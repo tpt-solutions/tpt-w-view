@@ -12,6 +12,7 @@ import { $, h } from "./dom";
 import { errorText, api, onDirChanged } from "./ipc";
 import { renderInfo, renderInfoError } from "./info-panel";
 import { openSettingsDialog } from "./settings-dialog";
+import { FolderTree } from "./folder-tree";
 import { applyTheme, loadSettings, saveSettings, type Settings, type Theme } from "./settings";
 import type { EntryDto, OpDto, SaveDto } from "./types";
 import { Viewer } from "./viewer";
@@ -20,7 +21,6 @@ const IMAGE_EXTENSIONS = [
   "jpg", "jpeg", "png", "gif", "bmp", "tif", "tiff", "webp", "avif", "heic", "heif",
   "cr2", "cr3", "nef", "arw", "dng", "orf", "raf", "rw2", "pef", "srw",
 ];
-const SLIDESHOW_MS = 4000;
 
 type Mode = "browse" | "view" | "edit";
 
@@ -44,6 +44,7 @@ const toolbar = $("toolbar");
 const browseHost = $("browse");
 const viewHost = $("view");
 const sidebar = $("sidebar");
+const foldersHost = $("folders");
 const statusText = $("status-text");
 const zoomText = $("zoom-text");
 const toasts = $("toasts");
@@ -100,6 +101,7 @@ const editController: EditController = {
 };
 
 const editPanel = new EditPanel(sidebar, editController, settings);
+editPanel.onCropAspect = (ratio) => viewer.setCropAspect(ratio);
 
 // ---- helpers -------------------------------------------------------------------------------
 
@@ -124,12 +126,20 @@ function setMode(next: Mode): void {
   crumbs.hidden = next !== "browse" || dir === null;
   viewHost.hidden = next === "browse";
   sidebar.hidden = next === "browse" || sidebarCollapsed;
+  foldersHost.hidden = next !== "browse" || !foldersVisible;
   infoHost.hidden = next !== "view";
   editPanel.root.hidden = next !== "edit";
+  viewer.setCropMode(next === "edit" ? (rect) => editPanel.setCropRect(rect) : null);
   updateStatus();
+  updateEmptyState();
 }
 
 let sidebarCollapsed = false;
+let foldersVisible = true;
+
+const folderTree = new FolderTree(foldersHost, {
+  onOpen: (path) => void loadDirectory(path).catch(reportError),
+});
 
 function updateStatus(): void {
   const parts: string[] = [];
@@ -167,6 +177,8 @@ async function loadDirectory(path: string): Promise<void> {
   setMode("browse");
   renderCrumbs(path);
   updateStatus();
+  updateEmptyState();
+  void folderTree.reveal(path).catch(() => undefined);
 }
 
 /** Splits a path into its root ("C:\", "/" or "") and named parts, keeping the native separator. */
@@ -290,7 +302,7 @@ function toggleSlideshow(): void {
     return;
   }
   if (mode !== "view") return;
-  slideshowTimer = window.setInterval(() => step(1), SLIDESHOW_MS);
+  slideshowTimer = window.setInterval(() => step(1), settings.slideshowSeconds * 1000);
   updateStatus();
 }
 
@@ -323,6 +335,11 @@ async function toggleFullscreen(): Promise<void> {
   }
 }
 
+async function pickOutputFolder(): Promise<string | null> {
+  const picked = await pickOpen({ directory: true, multiple: false });
+  return typeof picked === "string" ? picked : null;
+}
+
 function openSettings(): void {
   openSettingsDialog({
     settings,
@@ -330,6 +347,7 @@ function openSettings(): void {
       settings = next;
     },
     notify,
+    pickFolder: pickOutputFolder,
   });
 }
 
@@ -347,10 +365,7 @@ function openBatch(): void {
     onSettingsChange: (next) => {
       settings = next;
     },
-    pickFolder: async () => {
-      const picked = await pickOpen({ directory: true, multiple: false });
-      return typeof picked === "string" ? picked : null;
-    },
+    pickFolder: pickOutputFolder,
     notify,
   });
 }
@@ -362,10 +377,7 @@ function tool(label: string, title: string, onClick: () => void): HTMLButtonElem
 }
 
 toolbar.append(
-  tool("Open folder", "Open a folder (Ctrl+Shift+O)", async () => {
-    const picked = await pickOpen({ directory: true, multiple: false });
-    if (typeof picked === "string") await loadDirectory(picked).catch(reportError);
-  }),
+  tool("Open folder", "Open a folder (Ctrl+Shift+O)", () => void openFolderDialog()),
   tool("Open image", "Open an image (Ctrl+O)", async () => {
     const picked = await pickOpen({
       multiple: false,
@@ -380,10 +392,40 @@ toolbar.append(
     sidebarCollapsed = !sidebarCollapsed;
     sidebar.hidden = mode === "browse" || sidebarCollapsed;
   }),
+  tool("Folders", "Show or hide the folder tree", () => {
+    foldersVisible = !foldersVisible;
+    foldersHost.hidden = mode !== "browse" || !foldersVisible;
+  }),
   tool("Fullscreen", "Toggle fullscreen (F)", () => void toggleFullscreen()),
   tool("Theme", "Cycle theme", cycleTheme),
   tool("Settings", "Settings and maintenance", openSettings),
 );
+
+/** Asks for a folder and opens it in the browser. */
+async function openFolderDialog(): Promise<void> {
+  const picked = await pickOpen({ directory: true, multiple: false });
+  if (typeof picked === "string") await loadDirectory(picked).catch(reportError);
+}
+
+/**
+ * Shows guidance in the browser area when there is no folder open, or when the open folder holds
+ * no supported images. Hidden otherwise.
+ */
+function updateEmptyState(): void {
+  const host = $("empty-state");
+  const title = $("empty-title");
+  const text = $("empty-text");
+  const show = mode === "browse" && (dir === null || entries.length === 0);
+  host.hidden = !show;
+  if (!show) return;
+  if (dir === null) {
+    title.textContent = "No folder open";
+    text.textContent = "Open a folder to browse its images, or press Ctrl+Shift+O.";
+  } else {
+    title.textContent = "No images here";
+    text.textContent = "This folder has no supported image files. Try another folder.";
+  }
+}
 
 function reportError(err: unknown): void {
   notify(errorText(err), true);
@@ -499,6 +541,7 @@ onDirChanged(async (change) => {
   try {
     entries = await api.listDirectory(change.dir);
     browser.setEntries(entries);
+    updateEmptyState();
     updateStatus();
   } catch (err) {
     reportError(err);
@@ -525,7 +568,10 @@ async function start(): Promise<void> {
     }
   } else {
     statusText.textContent = "Open a folder or an image to begin.";
+    updateEmptyState();
   }
 }
+
+$("empty-open").addEventListener("click", () => void openFolderDialog());
 
 void start();
