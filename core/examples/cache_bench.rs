@@ -2,7 +2,9 @@
 // Copyright (c) 2026 TPT Solutions
 
 //! Cold versus warm directory open for the thumbnail cache. Run with:
-//! `cargo run --release -p tpt-view-core --example cache_bench -- <image-count>`
+//! `cargo run --release -p tpt-view-core --example cache_bench -- <image-count> [threads]`
+//! Threads default to 1 (sequential). Larger values split the cold pass across threads, which is
+//! how the desktop app's concurrent thumbnail requests behave.
 
 use std::time::Instant;
 
@@ -15,6 +17,11 @@ fn main() {
         .nth(1)
         .and_then(|s| s.parse().ok())
         .unwrap_or(200);
+    let threads: usize = std::env::args()
+        .nth(2)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1)
+        .max(1);
     let base = std::env::temp_dir().join(format!("tpt-cache-bench-{}", std::process::id()));
     let photos = base.join("photos");
     let cache_dir = base.join("cache");
@@ -36,10 +43,21 @@ fn main() {
     println!("scan {} entries: {:?}", entries.len(), t.elapsed());
 
     let t = Instant::now();
-    for e in &entries {
-        cache.get_or_create(e).unwrap();
-    }
-    println!("cold open (generate all thumbnails): {:?}", t.elapsed());
+    let chunk = entries.len().div_ceil(threads).max(1);
+    std::thread::scope(|scope| {
+        for part in entries.chunks(chunk) {
+            let cache = &cache;
+            scope.spawn(move || {
+                for e in part {
+                    cache.get_or_create(e).unwrap();
+                }
+            });
+        }
+    });
+    println!(
+        "cold open with {threads} thread(s) (generate all thumbnails): {:?}",
+        t.elapsed()
+    );
 
     let t = Instant::now();
     let hits = entries

@@ -32,6 +32,24 @@ pub fn is_supported(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// Lists the subdirectories directly inside `dir`, sorted by name (case-insensitive). Symbolic
+/// links are not followed, so a link cannot make the folder tree loop.
+pub fn list_subdirectories(dir: &Path) -> Result<Vec<PathBuf>> {
+    let mut dirs = Vec::new();
+    for item in std::fs::read_dir(dir)? {
+        let item = item?;
+        if item.file_type()?.is_dir() {
+            dirs.push(item.path());
+        }
+    }
+    dirs.sort_by_key(|p| {
+        p.file_name()
+            .map(|n| n.to_string_lossy().to_lowercase())
+            .unwrap_or_default()
+    });
+    Ok(dirs)
+}
+
 /// Lists supported image files directly inside `dir`, sorted by file name (case-insensitive).
 /// Subdirectories are not descended into; directory navigation is a UI concern.
 pub fn scan_dir(dir: &Path) -> Result<Vec<FileEntry>> {

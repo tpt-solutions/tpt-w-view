@@ -12,6 +12,7 @@
 use std::collections::HashSet;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use image::{ImageFormat, ImageReader};
 
@@ -19,6 +20,9 @@ use crate::backend::ImageBackend;
 use crate::codec::StdBackend;
 use crate::error::Result;
 use crate::scan::FileEntry;
+
+/// Sequence number for temp file names, so concurrent writers never share one.
+static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 
 /// Result of a [`ThumbnailCache::get_or_create`] call.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,8 +104,13 @@ impl ThumbnailCache {
         };
         let thumb = source.thumbnail(self.max_edge, self.max_edge).to_rgba8();
 
-        // Write to a temp name then rename, so readers never observe a half-written file.
-        let tmp = path.with_extension("png.tmp");
+        // Write to a temp name then rename, so readers never observe a half-written file. The
+        // temp name is unique per call, so two threads making the same thumbnail do not clash.
+        let tmp = path.with_extension(format!(
+            "png.{}.{}.tmp",
+            std::process::id(),
+            NEXT_TEMP.fetch_add(1, Ordering::Relaxed)
+        ));
         {
             let mut buf = Cursor::new(Vec::new());
             image::DynamicImage::ImageRgba8(thumb).write_to(&mut buf, ImageFormat::Png)?;

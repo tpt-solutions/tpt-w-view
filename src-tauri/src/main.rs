@@ -72,24 +72,57 @@ fn initial_path() -> Option<String> {
     ipc::initial_path_from_args(std::env::args())
 }
 
-#[tauri::command]
-fn list_directory(dir: String) -> CmdResult<Vec<ipc::EntryDto>> {
-    let dir = ipc::validate_directory(&dir)?;
-    Ok(scan::scan_dir(&dir)
-        .map_err(err)?
-        .into_iter()
-        .map(ipc::EntryDto::from)
-        .collect())
+/// Runs decode, scan or cache work on Tauri's blocking pool. Synchronous commands run on the
+/// main thread, so a slow decode there would freeze the window.
+async fn run_blocking<T, F>(work: F) -> CmdResult<T>
+where
+    F: FnOnce() -> CmdResult<T> + Send + 'static,
+    T: Send + 'static,
+{
+    match tauri::async_runtime::spawn_blocking(work).await {
+        Ok(result) => result,
+        Err(join_error) => Err(err(join_error)),
+    }
 }
 
 #[tauri::command]
-fn thumbnail(app: AppHandle, path: String, max_edge: u32) -> CmdResult<String> {
-    let path = ipc::validate_image_file(&path)?;
-    let cache = thumb_cache(&app, max_edge)?;
-    let entry = entry_for(&path)?;
-    let thumb = cache.get_or_create(&entry).map_err(err)?;
-    let bytes = std::fs::read(thumb.path).map_err(err)?;
-    Ok(format!("data:image/png;base64,{}", STANDARD.encode(bytes)))
+async fn list_directory(dir: String) -> CmdResult<Vec<ipc::EntryDto>> {
+    run_blocking(move || {
+        let dir = ipc::validate_directory(&dir)?;
+        Ok(scan::scan_dir(&dir)
+            .map_err(err)?
+            .into_iter()
+            .map(ipc::EntryDto::from)
+            .collect())
+    })
+    .await
+}
+
+/// Lists the folders directly inside a directory, for the folder tree. Files are not included.
+#[tauri::command]
+async fn list_subdirectories(dir: String) -> CmdResult<Vec<String>> {
+    run_blocking(move || {
+        let dir = ipc::validate_directory(&dir)?;
+        Ok(scan::list_subdirectories(&dir)
+            .map_err(err)?
+            .into_iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect())
+    })
+    .await
+}
+
+#[tauri::command]
+async fn thumbnail(app: AppHandle, path: String, max_edge: u32) -> CmdResult<String> {
+    run_blocking(move || {
+        let path = ipc::validate_image_file(&path)?;
+        let cache = thumb_cache(&app, max_edge)?;
+        let entry = entry_for(&path)?;
+        let thumb = cache.get_or_create(&entry).map_err(err)?;
+        let bytes = std::fs::read(thumb.path).map_err(err)?;
+        Ok(format!("data:image/png;base64,{}", STANDARD.encode(bytes)))
+    })
+    .await
 }
 
 /// Decodes any supported file (RAW or raster) to upright pixels plus its metadata.
@@ -125,7 +158,11 @@ fn entry_for(path: &Path) -> CmdResult<FileEntry> {
 // ---- viewing -------------------------------------------------------------------------------
 
 #[tauri::command]
-fn image_info(path: String) -> CmdResult<ipc::InfoDto> {
+async fn image_info(path: String) -> CmdResult<ipc::InfoDto> {
+    run_blocking(move || image_info_blocking(path)).await
+}
+
+fn image_info_blocking(path: String) -> CmdResult<ipc::InfoDto> {
     let path = ipc::validate_image_file(&path)?;
     let (width, height, format, meta) = if tpt_view_core::heic::is_heic_path(&path) {
         // HEIF headers can be read without decoding, but the image crate cannot probe them.
@@ -173,10 +210,13 @@ fn image_info(path: String) -> CmdResult<ipc::InfoDto> {
 
 /// Oriented, optionally downscaled PNG of an image file for display.
 #[tauri::command]
-fn preview(path: String, max_edge: u32) -> CmdResult<String> {
-    let path = ipc::validate_image_file(&path)?;
-    let (image, _) = load_oriented(&path)?;
-    png_data_url(&fit(image, max_edge))
+async fn preview(path: String, max_edge: u32) -> CmdResult<String> {
+    run_blocking(move || {
+        let path = ipc::validate_image_file(&path)?;
+        let (image, _) = load_oriented(&path)?;
+        png_data_url(&fit(image, max_edge))
+    })
+    .await
 }
 
 // ---- editing -------------------------------------------------------------------------------
@@ -414,12 +454,17 @@ fn clear_thumbnail_cache(app: AppHandle) -> CmdResult<usize> {
 }
 
 fn main() {
+    let started = std::time::Instant::now();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .setup(|app| {
+        .setup(move |app| {
             // Crash logs go to the app log directory, and only when the user has opted in.
             if let Ok(dir) = app.path().app_log_dir() {
                 diagnostics::install(dir);
+            }
+            // Startup profiling: set TPT_VIEW_TIMING=1 to print how long setup took.
+            if std::env::var_os("TPT_VIEW_TIMING").is_some() {
+                eprintln!("startup: setup finished after {:?}", started.elapsed());
             }
             Ok(())
         })
@@ -427,6 +472,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             initial_path,
             list_directory,
+            list_subdirectories,
             thumbnail,
             image_info,
             preview,

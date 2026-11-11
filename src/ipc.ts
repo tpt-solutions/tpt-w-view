@@ -19,6 +19,7 @@ import type {
 export const api = {
   initialPath: () => invoke<string | null>("initial_path"),
   listDirectory: (dir: string) => invoke<EntryDto[]>("list_directory", { dir }),
+  listSubdirectories: (dir: string) => invoke<string[]>("list_subdirectories", { dir }),
   thumbnail: (path: string, maxEdge: number) =>
     invoke<string>("thumbnail", { path, maxEdge }),
   imageInfo: (path: string) => invoke<InfoDto>("image_info", { path }),

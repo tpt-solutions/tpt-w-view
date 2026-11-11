@@ -347,3 +347,225 @@ fn conversion_round_trips_across_output_format_matrix() {
         }
     }
 }
+
+#[test]
+fn memory_budget_rejects_oversized_files_before_decoding() {
+    let input = tmpdir("budget-in");
+    let output = tmpdir("budget-out");
+    // 300 x 200 RGBA is 240 000 bytes decoded, so the estimate is 480 000 bytes.
+    save(&gradient(300, 200), &input.join("big.png"));
+
+    let mut job = BatchJob::new(vec![input.join("big.png")], &output, OutputFormat::Png);
+    job.memory_budget_bytes = 100_000;
+    let reports = batch::run(&job, &AtomicBool::new(false), |_| {}).unwrap();
+    match &reports[0].outcome {
+        Outcome::Failed { error } => assert!(error.contains("budget"), "{error}"),
+        other => panic!("expected a budget failure, got {other:?}"),
+    }
+    assert!(!output.join("big.png").exists(), "nothing written");
+
+    job.memory_budget_bytes = batch::DEFAULT_MEMORY_BUDGET;
+    let reports = batch::run(&job, &AtomicBool::new(false), |_| {}).unwrap();
+    assert!(
+        matches!(
+            reports[0].outcome,
+            Outcome::Converted { .. } | Outcome::Skipped { .. }
+        ),
+        "{reports:?}"
+    );
+}
+
+#[test]
+fn zero_memory_budget_is_an_invalid_job() {
+    let input = tmpdir("zero-budget-in");
+    let output = tmpdir("zero-budget-out");
+    save(&gradient(8, 8), &input.join("s.png"));
+    let mut job = BatchJob::new(vec![input.join("s.png")], &output, OutputFormat::Png);
+    job.memory_budget_bytes = 0;
+    assert!(batch::run(&job, &AtomicBool::new(false), |_| {}).is_err());
+}
+
+#[test]
+fn list_subdirectories_returns_sorted_folders_only() {
+    let root = tmpdir("subdirs");
+    fs::create_dir_all(root.join("Beta")).unwrap();
+    fs::create_dir_all(root.join("alpha")).unwrap();
+    fs::write(root.join("file.png"), b"not a folder").unwrap();
+
+    let names: Vec<String> = scan::list_subdirectories(&root)
+        .unwrap()
+        .iter()
+        .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names, vec!["alpha", "Beta"]);
+    assert!(scan::list_subdirectories(&root.join("missing")).is_err());
+}
+
+#[test]
+fn concurrent_requests_for_one_thumbnail_all_succeed() {
+    let input = tmpdir("thumb-race-in");
+    let cache_dir = tmpdir("thumb-race-cache");
+    save(&gradient(300, 200), &input.join("same.png"));
+    let entry = scan::scan_dir(&input).unwrap().remove(0);
+    let cache = ThumbnailCache::new(&cache_dir, 64).unwrap();
+
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = (0..8)
+            .map(|_| scope.spawn(|| cache.get_or_create(&entry)))
+            .collect();
+        for handle in handles {
+            let thumb = handle.join().unwrap().expect("thumbnail request failed");
+            assert!(thumb.path.is_file());
+        }
+    });
+    // No temp files are left behind once every writer has finished.
+    let leftovers = std::fs::read_dir(&cache_dir)
+        .unwrap()
+        .filter(|e| {
+            e.as_ref()
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .contains(".tmp")
+        })
+        .count();
+    assert_eq!(leftovers, 0);
+}
+
+#[test]
+fn preserve_policy_carries_exif_orientation_into_png_output() {
+    let input = tmpdir("png-exif-in");
+    let output = tmpdir("png-exif-out");
+    fs::write(input.join("rot.jpg"), jpeg_with_orientation(40, 24, 6)).unwrap();
+
+    let mut job = BatchJob::new(vec![input.join("rot.jpg")], &output, OutputFormat::Png);
+    job.metadata = MetadataPolicy::PreserveExif;
+    let reports = batch::run(&job, &AtomicBool::new(false), |_| {}).unwrap();
+    assert!(
+        matches!(reports[0].outcome, Outcome::Converted { .. }),
+        "{reports:?}"
+    );
+
+    let bytes = fs::read(output.join("rot.png")).unwrap();
+    // The decode also checks every chunk CRC, so a bad eXIf chunk fails here.
+    let decoded = StdBackend.decode_pixels(&bytes).unwrap();
+    assert_eq!(
+        (decoded.width(), decoded.height()),
+        (40, 24),
+        "pixels stay un-rotated"
+    );
+    assert_eq!(
+        StdBackend.read_metadata(&bytes).unwrap().orientation,
+        Orientation::Rotate90
+    );
+}
+
+#[test]
+fn strip_policy_to_png_bakes_orientation_into_pixels() {
+    let input = tmpdir("png-strip-in");
+    let output = tmpdir("png-strip-out");
+    fs::write(input.join("rot.jpg"), jpeg_with_orientation(40, 24, 6)).unwrap();
+
+    let job = BatchJob::new(vec![input.join("rot.jpg")], &output, OutputFormat::Png);
+    batch::run(&job, &AtomicBool::new(false), |_| {}).unwrap();
+
+    let bytes = fs::read(output.join("rot.png")).unwrap();
+    let decoded = StdBackend.decode_pixels(&bytes).unwrap();
+    assert_eq!((decoded.width(), decoded.height()), (24, 40));
+    assert_eq!(
+        StdBackend.read_metadata(&bytes).unwrap().orientation,
+        Orientation::Normal
+    );
+}
+
+#[test]
+fn preserve_policy_keeps_xmp_text_when_converting_jpeg_to_png() {
+    let input = tmpdir("png-xmp-in");
+    let output = tmpdir("png-xmp-out");
+    let xml = r#"<x:xmpmeta><rdf:RDF><rdf:Description>
+        <dc:creator><rdf:Seq><rdf:li>K. Carrier</rdf:li></rdf:Seq></dc:creator>
+        </rdf:Description></rdf:RDF></x:xmpmeta>"#;
+    let mut payload = b"http://ns.adobe.com/xap/1.0/\0".to_vec();
+    payload.extend_from_slice(xml.as_bytes());
+    let mut segment = vec![0xFF, 0xE1];
+    segment.extend_from_slice(&((payload.len() + 2) as u16).to_be_bytes());
+    segment.extend_from_slice(&payload);
+    let base = gradient(16, 12);
+    let mut jpeg_buf = std::io::Cursor::new(Vec::new());
+    base.write_to(&mut jpeg_buf, ImageFormat::Jpeg).unwrap();
+    let jpeg = jpeg_buf.into_inner();
+    let mut with_xmp = jpeg[..2].to_vec();
+    with_xmp.extend_from_slice(&segment);
+    with_xmp.extend_from_slice(&jpeg[2..]);
+    fs::write(input.join("xmp.jpg"), with_xmp).unwrap();
+
+    let mut job = BatchJob::new(vec![input.join("xmp.jpg")], &output, OutputFormat::Png);
+    job.metadata = MetadataPolicy::PreserveExif;
+    batch::run(&job, &AtomicBool::new(false), |_| {}).unwrap();
+
+    let bytes = fs::read(output.join("xmp.png")).unwrap();
+    assert_eq!(
+        StdBackend.read_metadata(&bytes).unwrap().creator.as_deref(),
+        Some("K. Carrier")
+    );
+}
+
+#[test]
+fn garbage_raw_file_fails_cleanly_in_the_budget_pre_check() {
+    let input = tmpdir("raw-garbage-in");
+    let output = tmpdir("raw-garbage-out");
+    fs::write(input.join("fake.cr2"), b"this is not a camera file").unwrap();
+
+    let job = BatchJob::new(vec![input.join("fake.cr2")], &output, OutputFormat::Jpeg);
+    let reports = batch::run(&job, &AtomicBool::new(false), |_| {}).unwrap();
+    assert!(
+        matches!(reports[0].outcome, Outcome::Failed { .. }),
+        "{reports:?}"
+    );
+}
+
+#[test]
+fn preserve_policy_carries_exif_and_xmp_into_webp_output() {
+    let input = tmpdir("webp-meta-in");
+    let output = tmpdir("webp-meta-out");
+    let jpeg = jpeg_with_orientation(40, 24, 6);
+    let xml = r#"<x:xmpmeta><rdf:RDF><rdf:Description>
+        <dc:creator><rdf:Seq><rdf:li>R. Webp</rdf:li></rdf:Seq></dc:creator>
+        </rdf:Description></rdf:RDF></x:xmpmeta>"#;
+    let mut payload = b"http://ns.adobe.com/xap/1.0/\0".to_vec();
+    payload.extend_from_slice(xml.as_bytes());
+    let mut segment = vec![0xFF, 0xE1];
+    segment.extend_from_slice(&((payload.len() + 2) as u16).to_be_bytes());
+    segment.extend_from_slice(&payload);
+    let mut with_xmp = jpeg[..2].to_vec();
+    with_xmp.extend_from_slice(&segment);
+    with_xmp.extend_from_slice(&jpeg[2..]);
+    fs::write(input.join("rot.jpg"), with_xmp).unwrap();
+
+    let mut job = BatchJob::new(vec![input.join("rot.jpg")], &output, OutputFormat::WebP);
+    job.metadata = MetadataPolicy::PreserveExif;
+    let reports = batch::run(&job, &AtomicBool::new(false), |_| {}).unwrap();
+    assert!(
+        matches!(reports[0].outcome, Outcome::Converted { .. }),
+        "{reports:?}"
+    );
+
+    let bytes = fs::read(output.join("rot.webp")).unwrap();
+    let decoded = StdBackend.decode_pixels(&bytes).unwrap();
+    assert_eq!(
+        (decoded.width(), decoded.height()),
+        (40, 24),
+        "pixels un-rotated"
+    );
+    let meta = StdBackend.read_metadata(&bytes).unwrap();
+    assert_eq!(
+        meta.orientation,
+        Orientation::Rotate90,
+        "EXIF chunk carried"
+    );
+    assert_eq!(
+        meta.creator.as_deref(),
+        Some("R. Webp"),
+        "XMP chunk carried"
+    );
+}

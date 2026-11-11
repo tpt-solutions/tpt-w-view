@@ -11,7 +11,9 @@ import { h } from "./dom";
 
 const LAYOUT: GridLayout = { itemWidth: 160, itemHeight: 184, gap: 12 };
 const OVERSCAN_ROWS = 2;
-const MAX_CONCURRENT_THUMBS = 3;
+// Thumbnail requests in flight at once. Decoding runs on the backend's blocking pool, so this
+// scales with the machine's cores, within a sensible range.
+const MAX_CONCURRENT_THUMBS = Math.min(8, Math.max(2, navigator.hardwareConcurrency || 4));
 
 export interface BrowserCallbacks {
   onOpen: (index: number) => void;
