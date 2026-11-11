@@ -47,13 +47,13 @@ or needs something outside this repo (a person, real hardware, a native library,
 | 0  | Project Setup & Licensing                          | 🟡 Mostly done (repo hosting outstanding) |
 | 1  | Core Image Decode Engine                           | 🟡 Partial (common formats, AVIF, RAW, EXIF/IPTC/XMP done; HEIC/streaming open) |
 | 2  | GPU-Accelerated Rendering (wgpu)                   | 🟡 Partial (offscreen tiled renderer tested on GPU; not yet shown in the app) |
-| 3  | Directory Browsing & Persistent Thumbnail Cache    | ✅ Done (folder tree and mip-based thumbnails are backlog-level extras) |
-| 4  | Basic Editing Tools                                | ✅ Done (numeric crop; on-canvas crop selection pending) |
-| 5  | Batch Conversion & Rename Engine (Core)            | 🟡 Partial (AVIF output and IPTC/XMP preservation open) |
+| 3  | Directory Browsing & Persistent Thumbnail Cache    | ✅ Done (mip-based thumbnails are a backlog-level extra) |
+| 4  | Basic Editing Tools                                | ✅ Done (on-canvas crop with aspect ratios added; not yet checked by hand) |
+| 5  | Batch Conversion & Rename Engine (Core)            | 🟡 Partial (metadata to TIFF output open) |
 | 6  | CLI (Scriptable Batch Mode)                        | ✅ Done |
 | 7  | Tauri Shell & IPC Layer                            | ✅ Done (built and launched locally; installer verification in progress) |
 | 8  | Frontend — Viewer                                  | 🟡 Partial (Canvas 2D viewer; wgpu display not wired) |
-| 9  | Frontend — Browser & Batch UI                      | 🟡 Partial (no folder tree; settings location fixed) |
+| 9  | Frontend — Browser & Batch UI                      | 🟡 Partial (folder tree added, not yet run in the app; default output folder added) |
 | 10 | Windows Platform Integration                       | 🟡 Partial (registration plan written; not applied on a real machine) |
 | 11 | Linux Platform Integration                         | 🟡 Partial (desktop/MIME files generated; not tested on a distro) |
 | 12 | Archon Support (Scoped, Real Integration)          | 🟡 Partial (path→block layer and design doc; capability backend open) |
@@ -61,7 +61,7 @@ or needs something outside this repo (a person, real hardware, a native library,
 | 14 | Testing & QA                                       | 🟡 Partial (automated tests done; manual QA open) |
 | 15 | Release v1                                         | 🟡 Partial (docs and changelog done; installers built locally; tag and publish open) |
 
-Automated tests at the time of writing: 122 passing across the workspace (plus one ignored
+Automated tests at the time of writing: 158 passing across the workspace (plus one ignored
 regeneration helper), `cargo fmt --check` and `cargo clippy -D warnings` clean, `tsc --noEmit` clean.
 
 ---
@@ -96,7 +96,9 @@ regeneration helper), `cargo fmt --check` and `cargo clippy -D warnings` clean, 
       coverage depends on rawler's camera support.
 - [~] EXIF/IPTC/XMP metadata — EXIF (orientation, make/model, DateTimeOriginal, GPS) and
       IPTC-IIM plus XMP text fields (title, description, creator, copyright, keywords) are read
-      from JPEG (`core/src/text_meta.rs`). PNG/TIFF XMP and writing metadata are not done.
+      from JPEG, XMP from uncompressed PNG `iTXt` chunks, and XMP from TIFF tag 700
+      (`core/src/text_meta.rs`); compressed PNG XMP is inflated with a 16 MiB limit. Writing metadata
+      into TIFF output is not done.
 - [ ] Streaming/progressive decode path for very large (gigapixel-scale) images — not started
 - [x] Shared `ImageBackend`-style trait (probe, decode, decode_frames, read_metadata) so
       platform crates and the Archon backend share one interface (`core/src/backend.rs`)
@@ -130,8 +132,9 @@ regeneration helper), `cargo fmt --check` and `cargo clippy -D warnings` clean, 
 - [x] Tests: cache invalidation, scan filtering, watcher events, cold versus warm benchmark
 
 ## Phase 4 — Basic Editing Tools
-- [~] Crop tool — numeric crop (x, y, width, height) in the edit panel. Freeform and fixed-ratio
-      crop with an on-canvas selection are not built.
+- [x] Crop tool — drag a rectangle on the image (`src/viewer.ts`, geometry in `src/crop-geometry.ts`),
+      with a Free, 1:1, 4:3, 3:2 or 16:9 aspect option, and numeric fields in the edit panel. Not yet
+      checked by hand in the running app.
 - [x] Rotate (90°-step and arbitrary angle with optional canvas expand), horizontal/vertical flip
 - [x] Resize with selectable resampling filter (nearest, bilinear, bicubic, Lanczos3)
 - [x] Brightness, contrast, saturation, levels (black/white/gamma) and tone curves
@@ -145,8 +148,12 @@ regeneration helper), `cargo fmt --check` and `cargo clippy -D warnings` clean, 
 - [x] Batch resize (exact, max-edge that never upscales, percentage)
 - [x] Pattern-based rename engine (`{counter:N}`, `{name:lower|upper}`, `{date}`, `{camera}`)
       (`core/src/rename.rs`)
-- [~] Metadata policy per job: strip (default) or preserve EXIF for JPEG→JPEG only
-      (`core/src/jpeg_meta.rs`). IPTC/XMP are not carried over, and EXIF is not carried between formats.
+- [x] Metadata policy per job: strip (default) or preserve from a JPEG source. JPEG output keeps
+      EXIF, XMP and IPTC (`core/src/jpeg_meta.rs`); PNG output keeps EXIF (`eXIf`) and XMP (`iTXt`)
+      (`core/src/png_meta.rs`); WebP output keeps them as `EXIF` and `XMP ` chunks
+      (`core/src/webp_meta.rs`). IPTC has no PNG or WebP form. Copied values are not rewritten after a resize.
+      Covered by end-to-end tests in `core/tests/text_metadata.rs` and `core/tests/batch_and_cache.rs`.
+      Fixed: preserve used to leave pixels un-rotated for PNG output, which dropped the orientation.
 - [x] Progress reporting and cancellable jobs (cancellation is checked between files)
 - [x] Job engine shared by the GUI and CLI (`core/src/batch.rs`)
 - [x] Tests: format matrix (6 sources × 5 outputs), rename correctness, EXIF preserve/strip,
@@ -177,24 +184,27 @@ regeneration helper), `cargo fmt --check` and `cargo clippy -D warnings` clean, 
 - [x] App shell (plain TS/HTML + Vite), light/dark/system theme
 - [x] Main viewer: pan (drag), zoom (wheel and keys), fit-to-window (never enlarges), actual size,
       fullscreen (`src/viewer.ts`)
-- [~] Slideshow — fixed 4-second interval, no transitions, interval not configurable
+- [~] Slideshow — interval is configurable in Settings (1–60 s, default 4). No transitions yet.
 - [x] Keyboard and mouse navigation (next/prev, zoom, fit, actual, rotate-as-edit); full table in
       `docs/user-guide.md`
 - [x] Image info/EXIF panel, including IPTC/XMP text fields (`src/info-panel.ts`)
-- [~] Wire viewer to the wgpu renderer — decode is via IPC, but drawing is Canvas 2D. Hooking the
-      renderer in needs a decision on window surface versus per-frame readback.
+- [~] Wire viewer to the wgpu renderer — decode is via IPC, but drawing is Canvas 2D. **Decision
+      (recorded): v1 keeps Canvas 2D display.** Per-frame readback would cost more than the GPU path
+      saves, and a native window surface inside Tauri is not yet scoped. The wgpu display path is
+      post-v1 (see Backlog).
 
 ## Phase 9 — Frontend — Browser & Batch UI
 - [x] Thumbnail grid browser: virtualized, lazy thumbnails with a concurrency limit, selection
-- [~] Folder navigation — breadcrumbs with click-to-jump and parent navigation. A folder tree in
-      the sidebar is not built.
+- [x] Folder navigation — breadcrumbs with click-to-jump and parent navigation, plus a lazy folder
+      tree (`src/folder-tree.ts`, `list_subdirectories`) that expands to the open folder. Not yet
+      checked by hand in the running app.
 - [x] Multi-select (click, Ctrl, Shift, Ctrl+A)
 - [x] Batch convert/rename dialog wired to Phase 5 (format, resize, rename with presets, EXIF,
       overwrite, live progress, cancel, per-file results)
-- [~] Basic editing UI (`src/edit-panel.ts`) — numeric crop only; sliders and levels are wired
-- [~] Settings dialog (`src/settings-dialog.ts`): default format, JPEG quality, thumbnail size,
-      rename presets, theme, crash logging, cache clear. The output folder is picked per batch
-      rather than stored as a default.
+- [~] Basic editing UI (`src/edit-panel.ts`) — on-canvas and numeric crop, sliders and levels are wired
+- [x] Settings dialog (`src/settings-dialog.ts`): default format, JPEG quality, thumbnail size,
+      rename presets, theme, default output folder (pre-fills the batch dialog), crash logging,
+      cache clear.
 
 ## Phase 10 — Windows Platform Integration
 - [~] File association / default-app registration: `platform-windows/src/file_assoc.rs` builds the
@@ -233,7 +243,9 @@ regeneration helper), `cargo fmt --check` and `cargo clippy -D warnings` clean, 
 ## Phase 13 — Performance & Polish
 - [~] Benchmark huge/gigapixel-scale decode and display latency — frame-time benchmark exists
       (6000×4000 tiles); no gigapixel decode benchmark yet
-- [ ] Startup time profiling (cold start, warm thumbnail-cache start) — not done
+- [~] Startup time profiling (cold start, warm thumbnail-cache start) — the app prints
+      "startup: setup finished after …" to stderr when `TPT_VIEW_TIMING=1` is set. Measuring cold and
+      warm starts still needs a person to run the installed app.
 - [~] App icon: a generated placeholder ("t" on blue) is in `src-tauri/icons/`. TPT Solutions branding
       assets are still to come.
 - [~] Accessibility pass — toolbar and dialogs have labels and roles; keyboard navigation covers the
@@ -248,10 +260,16 @@ regeneration helper), `cargo fmt --check` and `cargo clippy -D warnings` clean, 
       CLI invocation matrix (`cli/tests/cli_matrix.rs`), format matrix, EXIF and IPTC/XMP end-to-end
 - [ ] Manual QA: Windows 10/11 (GPU backend, file association, batch/CLI flows)
 - [ ] Manual QA: Linux (X11 + Wayland, GNOME and KDE)
-- [~] Performance QA: directories with tens of thousands of images — the cache benchmark covers 200
-      images. A run at tens of thousands is still to do.
+- [~] Performance QA: directories with tens of thousands of images. `cache_bench` at 20 000 PNGs
+      (1200×900, release, Windows, sequential): scan 645 ms, cold open 458 s, warm open with 20 000
+      cache hits 701 ms. At 2 000 images, cold open took 19.2 s on one thread and 6.1 s on eight
+      threads. Thumbnail, image info, preview and listing commands now run on Tauri's blocking pool
+      instead of the main thread, and the grid's concurrency scales with cores. Hand-scrolling QA of
+      the running app is still to do.
 - [~] Security review: `docs/security-review.md` covers path handling, IPC, overwrite safety and
-      crash logging, with open items (file-access scoping, fuzzing, memory budget)
+      crash logging, the per-file memory budget and a deterministic mutation pass. Open: file-access
+      scoping and coverage-guided fuzzing. RAW and HEIC budget pre-checks are written; RAW has not
+      been run on a real camera file.
 
 ## Phase 15 — Release v1
 - [x] Versioning scheme (SemVer, pre-1.0 rules) and changelog process (`docs/versioning.md`,
@@ -268,11 +286,19 @@ regeneration helper), `cargo fmt --check` and `cargo clippy -D warnings` clean, 
 ## Backlog / Future Phases (post-v1)
 - [ ] macOS support
 - [ ] Plugin/extension system
+- [ ] Metadata into TIFF output. **Decision:** post-v1. The image crate's TIFF encoder takes no
+      custom tags, so this means rewriting the IFD and its offsets by hand. JPEG, PNG and WebP
+      output already carry metadata.
 - [ ] Print support
 - [ ] Color management (ICC profile support)
 - [ ] Advanced editing (layers, filters beyond basic adjust)
 - [ ] Cloud storage source integration (browse/convert from cloud-synced folders directly)
 - [ ] Real Archon-native directory/file-resource capability once upstream lands (replacing the
       hand-rolled path→block-id layer with a first-class Archon primitive)
-- [ ] HEIC decoding (needs libde265 + libheif; see Phase 1)
-- [ ] Display frames through the wgpu renderer inside the desktop app
+- [ ] Display frames through the wgpu renderer inside the desktop app. **Decision:** post-v1.
+- [ ] GPU bicubic and Lanczos sampling. **Decision:** post-v1. Tile seams need neighbour texels
+      from adjacent tiles; the CPU resize already offers Lanczos3.
+- [ ] Streaming decode for gigapixel images. **Decision:** post-v1. The per-file memory budget
+      rejects oversized files until then.
+- [ ] File-access scoping through Tauri's fs scope. **Decision:** revisit after a manual test of the
+      native file flow (see docs/security-review.md).

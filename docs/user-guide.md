@@ -8,6 +8,9 @@
 - **Select** with click, Ctrl+click (toggle) and Shift+click (range). Ctrl+A selects all.
 - **Open** an image by double-clicking it or pressing Enter.
 - **Go up** one folder with Backspace, or click a breadcrumb.
+- **Folder tree:** in the browse view, a tree on the left shows the folders from the drive root down to
+  the open folder. Click a name to open it, or the arrow to expand or collapse it. The toolbar
+  button Folders hides the tree. Folders that cannot be read show "Not available".
 
 ## Viewing
 
@@ -18,7 +21,7 @@
 | 0 | Fit to window (never enlarges) |
 | 1 | Actual size (100%) |
 | Drag, mouse wheel | Pan / zoom |
-| S | Start or stop the slideshow (4-second interval) |
+| S | Start or stop the slideshow (interval set in Settings, 4 seconds by default) |
 | I | Show or hide the sidebar (EXIF and text info) |
 | F | Fullscreen |
 | Esc | Back to the grid |
@@ -29,7 +32,8 @@ Press E (or R to rotate a quarter turn) to open the edit panel. Edits apply to a
 the original file is not changed until you save.
 
 - **Transform:** rotate left or right, flip horizontally or vertically, rotate by an angle, resize,
-  crop by numbers.
+  crop by dragging a rectangle on the image or by typing the numbers. The Aspect dropdown
+  (Free, 1:1, 4:3, 3:2, 16:9) constrains the drag.
 - **Colour:** brightness, contrast, saturation, and levels with gamma. Sliders apply when released.
 - **History:** Ctrl+Z to undo and Ctrl+Y (or Ctrl+Shift+Z) to redo. Up to 32 steps are kept.
 - **Save as…** writes a new file. **Overwrite original…** replaces the file after a confirmation.

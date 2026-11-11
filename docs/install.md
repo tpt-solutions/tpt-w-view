@@ -7,6 +7,10 @@
   its bootstrapper. Windows 11 already includes WebView2.
 - **Default viewer:** after installing, open *Settings → Apps → Default apps* and choose tpt-view for
   the image types you want. Windows does not let apps set their own default.
+- **Build a runnable desktop binary:** a plain `cargo build --release` produces an executable that
+  loads the UI from the Vite dev server (`localhost:1420`) and opens a blank window. Build with
+  `npm run tauri build` for the installer, or with `cargo build --release -p tpt-view-app --features
+  tauri/custom-protocol` for a standalone `target/release/tpt-view.exe` that embeds the UI.
 - **Build from source:** install Rust (the version in `rust-toolchain.toml`) and Node.js 20 or
   later, then run `npm ci` and `npm run tauri build` from the repository root.
   - The AVIF decoder (dav1d) is compiled from source during the build, so you also need the
