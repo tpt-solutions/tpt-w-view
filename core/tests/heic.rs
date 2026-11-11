@@ -7,7 +7,7 @@
 use std::path::Path;
 
 use libheif_rs::{Channel, ColorSpace, CompressionFormat, HeifContext, Image, LibHeif, RgbChroma};
-use tpt_view_core::heic::{decode_heic_bytes, is_heic_path};
+use tpt_view_core::heic::{decode_heic_bytes, is_heic_path, probe_dimensions};
 
 const W: u32 = 64;
 const H: u32 = 48;
@@ -62,6 +62,34 @@ fn encode_heic_with_exif(exif: Option<Vec<u8>>) -> Vec<u8> {
         ctx.add_exif_metadata(&handle, &block).expect("attach exif");
     }
     ctx.write_to_bytes().expect("serialise")
+}
+
+#[test]
+fn probe_reads_dimensions_from_the_header() {
+    assert_eq!(probe_dimensions(&encode_heic()).unwrap(), (W, H));
+    assert!(probe_dimensions(b"not heif").is_err());
+}
+
+#[test]
+fn oversized_heic_fails_the_batch_budget_check_before_decoding() {
+    use std::sync::atomic::AtomicBool;
+    use tpt_view_core::batch::{self, BatchJob, Outcome, OutputFormat};
+
+    let base = std::env::temp_dir().join(format!("tpt-view-heic-budget-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    let (input, output) = (base.join("in"), base.join("out"));
+    std::fs::create_dir_all(&input).unwrap();
+    std::fs::write(input.join("pic.heic"), encode_heic()).unwrap();
+
+    let mut job = BatchJob::new(vec![input.join("pic.heic")], &output, OutputFormat::Png);
+    // 64 x 48 x 4 x 2 = 24 576 bytes, so a 10 000-byte budget must reject it.
+    job.memory_budget_bytes = 10_000;
+    let reports = batch::run(&job, &AtomicBool::new(false), |_| {}).unwrap();
+    match &reports[0].outcome {
+        Outcome::Failed { error } => assert!(error.contains("budget"), "{error}"),
+        other => panic!("expected a budget failure, got {other:?}"),
+    }
+    let _ = std::fs::remove_dir_all(&base);
 }
 
 #[test]

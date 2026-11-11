@@ -16,6 +16,7 @@ pub mod heic;
 mod jpeg_meta;
 mod metadata;
 mod orientation;
+mod png_meta;
 pub mod raw;
 pub mod rename;
 pub mod scan;
@@ -23,6 +24,7 @@ mod text_meta;
 pub mod thumbs;
 pub mod tiling;
 pub mod watch;
+mod webp_meta;
 
 pub use backend::{DecodedImage, Frame, ImageBackend, ImageInfo};
 pub use codec::StdBackend;

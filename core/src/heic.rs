@@ -82,6 +82,13 @@ pub fn decode_heic_bytes(bytes: &[u8]) -> Result<HeicDecoded> {
     Ok(HeicDecoded { image, metadata })
 }
 
+/// Reads the primary image's pixel size from the HEIF header, without decoding any pixels.
+pub fn probe_dimensions(bytes: &[u8]) -> Result<(u32, u32)> {
+    let ctx = HeifContext::read_from_bytes(bytes).map_err(map_err)?;
+    let handle = ctx.primary_image_handle().map_err(map_err)?;
+    Ok((handle.width(), handle.height()))
+}
+
 /// Reads and decodes a HEIC/HEIF file from disk.
 pub fn load_path(path: &Path) -> Result<HeicDecoded> {
     let bytes = std::fs::read(path)?;

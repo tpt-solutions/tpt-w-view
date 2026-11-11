@@ -35,7 +35,7 @@ OPTIONS:
         --size <WxH>         Force exact dimensions
     -r, --rename <PATTERN>   Rename pattern, e.g. \"img_{counter:03}\"  [default: {name}]
         --start <N>          First value of {counter}         [default: 1]
-        --preserve-exif      Keep EXIF (JPEG -> JPEG only); default strips metadata
+        --preserve-exif      Keep metadata from JPEG sources (JPEG, PNG or WebP output); default strips
         --overwrite          Replace existing outputs instead of skipping them
         --json               Print a machine-readable JSON report on stdout
     -h, --help               Show this help
@@ -250,6 +250,7 @@ fn run_convert(args: ConvertArgs) -> ExitCode {
         rename: args.rename,
         start_counter: args.start,
         overwrite: args.overwrite,
+        memory_budget_bytes: batch::DEFAULT_MEMORY_BUDGET,
     };
 
     // Ctrl+C stops the batch between files; files not yet started are reported as cancelled.

@@ -57,6 +57,17 @@ pub fn load_path(path: &Path) -> Result<RawDecoded> {
     develop(&raw)
 }
 
+/// Reads the sensor size of a RAW file without decoding its pixels (rawler's dummy decode).
+pub fn probe_dimensions(path: &Path) -> Result<(u32, u32)> {
+    let source = RawSource::new(path)?;
+    let raw = rawler::decode_dummy(&source).map_err(map_err)?;
+    let width =
+        u32::try_from(raw.width).map_err(|_| Error::Decode("RAW width too large".into()))?;
+    let height =
+        u32::try_from(raw.height).map_err(|_| Error::Decode("RAW height too large".into()))?;
+    Ok((width, height))
+}
+
 /// Decodes and develops a RAW file already held in memory.
 pub fn decode_raw_bytes(bytes: &[u8]) -> Result<RawDecoded> {
     let source = RawSource::new_from_slice(bytes);

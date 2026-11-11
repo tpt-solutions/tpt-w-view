@@ -25,7 +25,7 @@ non-recursively. Shell globs (`photos/*.jpg`) are expanded by your shell.
 | `--size <WxH>` | — | Force exact dimensions (aspect ratio is not kept) |
 | `-r, --rename <PATTERN>` | `{name}` | Output name pattern (see below) |
 | `--start <N>` | `1` | First value of `{counter}` |
-| `--preserve-exif` | off | Keep EXIF. Works for JPEG → JPEG only |
+| `--preserve-exif` | off | Keep metadata from a JPEG source. JPEG → JPEG keeps EXIF, XMP and IPTC; JPEG → PNG and JPEG → WebP keep EXIF and XMP |
 | `--overwrite` | off | Replace existing outputs instead of skipping them |
 | `--json` | off | Print a JSON report on stdout instead of text |
 
@@ -68,6 +68,10 @@ Ctrl+C takes effect between files, so a file being written finishes first.
 ```
 
 `status` is one of `converted`, `skipped` (with `reason`), `failed` (with `error`) or `cancelled`.
+
+Each file has a working-memory budget of 1 GiB (estimated as twice the decoded RGBA8 size). An
+image over the budget fails with an error and is not written. Raster, HEIC and RAW files are all
+checked from their headers before decoding.
 Field names are part of the 1.0 compatibility promise (see `docs/versioning.md`).
 
 ## Examples

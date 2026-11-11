@@ -17,8 +17,10 @@ use crate::backend::ImageBackend;
 use crate::codec::StdBackend;
 use crate::error::{Error, Result};
 use crate::jpeg_meta;
+use crate::png_meta;
 use crate::rename::{self, RenameContext};
 use crate::scan;
+use crate::webp_meta;
 
 /// Output encodings for batch conversion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,9 +87,13 @@ pub enum Resize {
 
 /// Whether metadata survives conversion.
 ///
-/// `PreserveExif` copies the EXIF segment verbatim when the source and output are both JPEG.
-/// Pixels are then left un-rotated so the copied orientation tag stays correct. For other
-/// format pairs the segment cannot be carried over, so output is stripped.
+/// `PreserveExif` applies when the source is a JPEG. JPEG output keeps the EXIF, XMP and IPTC
+/// (Photoshop) segments verbatim. PNG output keeps EXIF as an `eXIf` chunk and XMP as an `iTXt`
+/// chunk; WebP output keeps them as `EXIF` and `XMP ` chunks. IPTC has no PNG or WebP form and is
+/// dropped. TIFF, BMP and AVIF output are stripped. Pixels are left
+/// un-rotated whenever metadata is kept, so the copied orientation tag stays correct. Copied values
+/// are not rewritten after a resize, so stale width/height fields inside them can disagree with the
+/// output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MetadataPolicy {
     Strip,
@@ -111,7 +117,14 @@ pub struct BatchJob {
     pub start_counter: u32,
     /// When false, existing output files are skipped rather than replaced.
     pub overwrite: bool,
+    /// Upper bound on the estimated working memory for one file, in bytes. Raster, HEIC and RAW
+    /// files are checked from their headers before decoding. Defaults to
+    /// [`DEFAULT_MEMORY_BUDGET`].
+    pub memory_budget_bytes: u64,
 }
+
+/// Default per-file working-memory budget: 1 GiB.
+pub const DEFAULT_MEMORY_BUDGET: u64 = 1 << 30;
 
 impl BatchJob {
     /// A job with sensible defaults: quality 90, no resize, stripped metadata, `{name}` naming.
@@ -126,6 +139,7 @@ impl BatchJob {
             rename: "{name}".into(),
             start_counter: 1,
             overwrite: false,
+            memory_budget_bytes: DEFAULT_MEMORY_BUDGET,
         }
     }
 }
@@ -218,6 +232,9 @@ fn validate(job: &BatchJob) -> Result<()> {
     if job.inputs.is_empty() {
         return Err(Error::Invalid("no input files given".into()));
     }
+    if job.memory_budget_bytes == 0 {
+        return Err(Error::Invalid("memory budget must be > 0".into()));
+    }
     // Reject a bad pattern before touching any file.
     rename::render(
         &job.rename,
@@ -244,25 +261,32 @@ fn expand_inputs(inputs: &[PathBuf]) -> Result<Vec<PathBuf>> {
 }
 
 fn process_one(job: &BatchJob, input: &Path, counter: u32) -> Result<Outcome> {
-    let preserve = job.metadata == MetadataPolicy::PreserveExif;
     // RAW files are developed through rawler; they have no JPEG segments to preserve.
     let (pixels, meta, bytes) = if crate::raw::is_raw_path(input) {
+        let (width, height) = crate::raw::probe_dimensions(input)?;
+        check_memory_budget(job.memory_budget_bytes, width, height)?;
         let developed = crate::raw::load_path(input)?;
         (developed.image, developed.metadata, None)
     } else if crate::heic::is_heic_path(input) {
-        let decoded = crate::heic::load_path(input)?;
+        let bytes = std::fs::read(input)?;
+        let (width, height) = crate::heic::probe_dimensions(&bytes)?;
+        check_memory_budget(job.memory_budget_bytes, width, height)?;
+        let decoded = crate::heic::decode_heic_bytes(&bytes)?;
         (decoded.image, decoded.metadata, None)
     } else {
         let bytes = std::fs::read(input)?;
         let backend = StdBackend;
+        let info = backend.probe(&bytes)?;
+        check_memory_budget(job.memory_budget_bytes, info.width, info.height)?;
         let meta = backend.read_metadata(&bytes)?;
-        // Preserving EXIF means keeping the orientation tag, so pixels must not be rotated here.
-        let pixels = if preserve {
+        // Keeping metadata means keeping the orientation tag, so pixels must not be rotated here.
+        let carry = carries_metadata(job, &bytes);
+        let pixels = if carry {
             backend.decode_pixels(&bytes)?
         } else {
             backend.decode(&bytes)?.image
         };
-        (pixels, meta, Some(bytes))
+        (pixels, meta, carry.then_some(bytes))
     };
     let pixels = resize(pixels, job.resize);
 
@@ -289,16 +313,60 @@ fn process_one(job: &BatchJob, input: &Path, counter: u32) -> Result<Outcome> {
     }
 
     let mut encoded = encode(&pixels, job.format, job.quality)?;
-    if let (true, Some(bytes)) = (preserve && job.format == OutputFormat::Jpeg, bytes.as_ref()) {
-        if let Some(segment) = jpeg_meta::exif_app1(bytes) {
-            if let Some(with_exif) = jpeg_meta::insert_after_soi(&encoded, segment) {
-                encoded = with_exif;
+    if let Some(source) = bytes.as_deref() {
+        encoded = match job.format {
+            OutputFormat::Jpeg => {
+                let segments = jpeg_meta::preserved_segments(source);
+                jpeg_meta::insert_after_soi(&encoded, &segments).unwrap_or(encoded)
             }
-        }
+            OutputFormat::Png => {
+                let mut chunks = Vec::new();
+                if let Some(tiff) = jpeg_meta::exif_tiff(source) {
+                    chunks.push(png_meta::chunk(b"eXIf", tiff));
+                }
+                if let Some(xmp) = jpeg_meta::xmp_packet(source) {
+                    chunks.push(png_meta::chunk(b"iTXt", &png_meta::xmp_itxt_body(xmp)));
+                }
+                png_meta::insert_after_ihdr(&encoded, &chunks).unwrap_or(encoded)
+            }
+            OutputFormat::WebP => {
+                let exif = jpeg_meta::exif_tiff(source);
+                let xmp = jpeg_meta::xmp_packet(source);
+                webp_meta::with_metadata(&encoded, pixels.width(), pixels.height(), exif, xmp)
+                    .unwrap_or(encoded)
+            }
+            _ => encoded,
+        };
     }
 
     write_atomic(&output, &encoded)?;
     Ok(Outcome::Converted { output })
+}
+
+/// Whether this file's metadata is carried into the output: the policy asks for it, the source is
+/// a JPEG, and the output format can hold it (JPEG or PNG). Pixels are then left un-rotated so the
+/// copied orientation tag stays correct.
+fn carries_metadata(job: &BatchJob, source: &[u8]) -> bool {
+    job.metadata == MetadataPolicy::PreserveExif
+        && source.starts_with(&[0xFF, 0xD8])
+        && matches!(
+            job.format,
+            OutputFormat::Jpeg | OutputFormat::Png | OutputFormat::WebP
+        )
+}
+
+/// Rejects an image whose decode, resize and encode working set would exceed `budget`. The peak
+/// is approximated as the decoded RGBA8 buffer plus one working copy.
+fn check_memory_budget(budget: u64, width: u32, height: u32) -> Result<()> {
+    let needed = u64::from(width) * u64::from(height) * 4 * 2;
+    if needed > budget {
+        return Err(Error::Invalid(format!(
+            "{width}x{height} image needs about {} MiB of working memory, over the {} MiB budget",
+            needed >> 20,
+            budget >> 20
+        )));
+    }
+    Ok(())
 }
 
 fn resize(img: DynamicImage, spec: Resize) -> DynamicImage {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 TPT Solutions
 
-//! IPTC-IIM (Photoshop APP13) and XMP (APP1) text metadata for JPEG files (Phase 1).
+//! IPTC-IIM (Photoshop APP13) and XMP text metadata for JPEG files, and XMP for PNG files (Phase 1).
 //!
 //! Only the descriptive fields a viewer shows are extracted: title, description (caption),
 //! creator, copyright and keywords. IPTC is preferred where both formats carry a field, since
@@ -10,11 +10,73 @@
 //! The XMP reader is a deliberately small scanner, not a full RDF parser. It handles the element
 //! forms that editors write (`<dc:title><rdf:Alt><rdf:li>…`) and entity-escaped text.
 
+use std::borrow::Cow;
+
 use crate::jpeg_meta::app_segments;
 
 const PHOTOSHOP_HEADER: &[u8] = b"Photoshop 3.0\0";
 const IPTC_RESOURCE_ID: u16 = 0x0404;
 const XMP_HEADER: &[u8] = b"http://ns.adobe.com/xap/1.0/\0";
+const PNG_SIGNATURE: &[u8] = &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+const PNG_XMP_KEYWORD: &[u8] = b"XML:com.adobe.xmp";
+/// Largest XMP packet read from a compressed PNG chunk (16 MiB).
+const MAX_XMP_BYTES: usize = 16 << 20;
+const TIFF_LE: &[u8] = b"II*\0";
+const TIFF_BE: &[u8] = b"MM\0*";
+
+/// Finds the uncompressed XMP packet in a PNG's `iTXt` chunks. Compressed XMP is not decoded,
+/// and a corrupt chunk list simply ends the search.
+fn png_xmp(png: &[u8]) -> Option<Cow<'_, [u8]>> {
+    let mut pos = PNG_SIGNATURE.len();
+    while pos + 8 <= png.len() {
+        let len = u32::from_be_bytes(png[pos..pos + 4].try_into().ok()?) as usize;
+        let kind = &png[pos + 4..pos + 8];
+        let data_start = pos + 8;
+        let data_end = data_start.checked_add(len)?;
+        if data_end > png.len() {
+            return None;
+        }
+        if kind == b"iTXt" {
+            if let Some(xml) = itxt_xmp(&png[data_start..data_end]) {
+                return Some(xml);
+            }
+        }
+        if kind == b"IEND" {
+            break;
+        }
+        // Skip the chunk data and its four-byte CRC.
+        pos = data_end.checked_add(4)?;
+    }
+    None
+}
+
+/// Extracts the text of an uncompressed `XML:com.adobe.xmp` iTXt chunk.
+fn itxt_xmp(data: &[u8]) -> Option<Cow<'_, [u8]>> {
+    let keyword_end = data.iter().position(|&b| b == 0)?;
+    if &data[..keyword_end] != PNG_XMP_KEYWORD {
+        return None;
+    }
+    // Compression flag, compression method, then language and translated keyword (both
+    // NUL-terminated); the text follows.
+    let compressed = *data.get(keyword_end + 1)?;
+    let method = *data.get(keyword_end + 2)?;
+    let rest = data.get(keyword_end + 3..)?;
+    let language_end = rest.iter().position(|&b| b == 0)?;
+    let rest = &rest[language_end + 1..];
+    let translated_end = rest.iter().position(|&b| b == 0)?;
+    let text = &rest[translated_end + 1..];
+    match compressed {
+        0 => Some(Cow::Borrowed(text)),
+        // Method 0 is zlib, the only method PNG defines. The limit stops a small compressed
+        // packet from expanding without bound.
+        1 if method == 0 => {
+            miniz_oxide::inflate::decompress_to_vec_zlib_with_limit(text, MAX_XMP_BYTES)
+                .ok()
+                .map(Cow::Owned)
+        }
+        _ => None,
+    }
+}
 
 /// Descriptive text fields. Every field is optional; keywords may be empty.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -26,8 +88,56 @@ pub struct TextMetadata {
     pub keywords: Vec<String>,
 }
 
-/// Reads IPTC and XMP text fields from a JPEG. Non-JPEG input yields empty metadata.
-pub(crate) fn read(jpeg: &[u8]) -> TextMetadata {
+/// Reads IPTC and XMP text fields from a JPEG or PNG. Other input yields empty metadata.
+pub(crate) fn read(bytes: &[u8]) -> TextMetadata {
+    if bytes.starts_with(PNG_SIGNATURE) {
+        return png_xmp(bytes)
+            .map(|xml| parse_xmp(&String::from_utf8_lossy(&xml)))
+            .unwrap_or_default();
+    }
+    if bytes.starts_with(TIFF_LE) || bytes.starts_with(TIFF_BE) {
+        return tiff_xmp(bytes);
+    }
+    if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP".as_slice()) {
+        return webp_xmp(bytes)
+            .map(|xml| parse_xmp(&String::from_utf8_lossy(xml)))
+            .unwrap_or_default();
+    }
+    read_jpeg(bytes)
+}
+
+/// Finds the packet in a WebP file's `XMP ` chunk. A malformed chunk list ends the search.
+fn webp_xmp(webp: &[u8]) -> Option<&[u8]> {
+    let mut pos = 12usize;
+    while pos + 8 <= webp.len() {
+        let kind = &webp[pos..pos + 4];
+        let len = u32::from_le_bytes(webp[pos + 4..pos + 8].try_into().ok()?) as usize;
+        let data = webp.get(pos + 8..pos + 8usize.checked_add(len)?)?;
+        if kind == b"XMP " {
+            return Some(data);
+        }
+        pos += 8 + len + (len & 1);
+    }
+    None
+}
+
+/// Reads XMP from IFD0 tag 700 (ApplicationNotes), where TIFF writers store the packet.
+fn tiff_xmp(tiff: &[u8]) -> TextMetadata {
+    let Ok(exif) = exif::Reader::new().read_raw(tiff.to_vec()) else {
+        return TextMetadata::default();
+    };
+    match exif
+        .get_field(exif::Tag(exif::Context::Tiff, 0x02BC), exif::In::PRIMARY)
+        .map(|field| &field.value)
+    {
+        Some(exif::Value::Byte(xml) | exif::Value::Undefined(xml, _)) => {
+            parse_xmp(&String::from_utf8_lossy(xml))
+        }
+        _ => TextMetadata::default(),
+    }
+}
+
+fn read_jpeg(jpeg: &[u8]) -> TextMetadata {
     let mut iptc = TextMetadata::default();
     let mut xmp = TextMetadata::default();
     for (marker, payload) in app_segments(jpeg) {
