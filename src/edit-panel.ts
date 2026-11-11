@@ -8,6 +8,7 @@
 import { h, type Child } from "./dom";
 import type { FilterName, OpDto, SaveDto } from "./types";
 import type { Settings } from "./settings";
+import { CROP_ASPECTS, type CropRect } from "./crop-geometry";
 
 export interface EditController {
   apply(op: OpDto): Promise<void>;
@@ -30,7 +31,10 @@ export class EditPanel {
   private readonly lockAspect: HTMLInputElement;
   private readonly format: HTMLSelectElement;
   private readonly quality: HTMLInputElement;
+  private readonly cropAspectSelect: HTMLSelectElement;
   private aspect = 1;
+  /** Called when the crop aspect ratio dropdown changes. */
+  onCropAspect: ((ratio: number | null) => void) | null = null;
   private readonly controls: HTMLButtonElement[] = [];
 
   constructor(
@@ -47,6 +51,11 @@ export class EditPanel {
       w: h("input", { type: "number", min: 1, class: "num" }) as HTMLInputElement,
       h: h("input", { type: "number", min: 1, class: "num" }) as HTMLInputElement,
     };
+    this.cropAspectSelect = h(
+      "select",
+      { "aria-label": "Crop aspect ratio", onchange: () => this.onCropAspect?.(CROP_ASPECTS[Number(this.cropAspectSelect.value)].ratio) },
+      ...CROP_ASPECTS.map((a, i) => h("option", { value: String(i) }, a.label)),
+    ) as HTMLSelectElement;
     this.format = h("select", {}, ...FORMATS.map((f) => h("option", { value: f }, f))) as HTMLSelectElement;
     this.format.value = settings.defaultFormat;
     this.quality = h("input", {
@@ -93,6 +102,14 @@ export class EditPanel {
     this.cropInputs.y.value = "0";
     this.cropInputs.w.value = String(width);
     this.cropInputs.h.value = String(height);
+  }
+
+  /** Fills the crop fields from a rectangle selected on the image. */
+  setCropRect(rect: CropRect): void {
+    this.cropInputs.x.value = String(rect.x);
+    this.cropInputs.y.value = String(rect.y);
+    this.cropInputs.w.value = String(rect.w);
+    this.cropInputs.h.value = String(rect.h);
   }
 
   setEnabled(enabled: boolean): void {
@@ -189,6 +206,8 @@ export class EditPanel {
       "Crop",
       h("label", {}, "X ", x, " Y ", y),
       h("label", {}, "W ", w, " H ", hh),
+      h("label", {}, "Aspect ", this.cropAspectSelect),
+      h("p", { class: "muted", text: "Drag on the image to select a crop area." }),
       this.button("Crop", () =>
         this.run({
           kind: "crop",

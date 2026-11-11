@@ -4,6 +4,8 @@
 // Main image viewer: fit-to-window, actual size, pan and zoom. Drawn with Canvas 2D for now;
 // the wgpu renderer (Phase 2) replaces the drawing step without changing this interface.
 
+import { cropFromDrag, type CropRect, type Point } from "./crop-geometry";
+
 const MIN_SCALE = 0.01;
 const MAX_SCALE = 32;
 
@@ -16,6 +18,11 @@ export class Viewer {
   private offsetX = 0;
   private offsetY = 0;
   private drag: { x: number; y: number; ox: number; oy: number } | null = null;
+  /** Crop selection in image pixels; active only while `cropListener` is set (edit view). */
+  private cropListener: ((rect: CropRect) => void) | null = null;
+  private cropAspect: number | null = null;
+  private cropAnchor: Point | null = null;
+  private cropSel: CropRect | null = null;
   private readonly resizeObserver: ResizeObserver;
   private readonly listeners: Array<() => void> = [];
 
@@ -29,10 +36,27 @@ export class Viewer {
 
     this.on(this.canvas, "pointerdown", (e) => {
       this.canvas.setPointerCapture(e.pointerId);
+      if (this.cropListener && this.image) {
+        const start = this.imagePoint(e);
+        this.cropAnchor = start;
+        this.cropSel = null;
+        this.draw();
+        return;
+      }
       this.drag = { x: e.clientX, y: e.clientY, ox: this.offsetX, oy: this.offsetY };
       this.canvas.classList.add("dragging");
     });
     this.on(this.canvas, "pointermove", (e) => {
+      if (this.cropAnchor && this.image) {
+        this.cropSel = cropFromDrag(
+          this.cropAnchor,
+          this.imagePoint(e),
+          { width: this.image.naturalWidth, height: this.image.naturalHeight },
+          this.cropAspect,
+        );
+        this.draw();
+        return;
+      }
       if (!this.drag) return;
       this.fitMode = false;
       this.offsetX = this.drag.ox + (e.clientX - this.drag.x);
@@ -40,6 +64,16 @@ export class Viewer {
       this.draw();
     });
     const endDrag = () => {
+      if (this.cropAnchor) {
+        this.cropAnchor = null;
+        const sel = this.cropSel;
+        if (sel && sel.w > 0 && sel.h > 0) {
+          this.cropListener?.(sel);
+        } else {
+          this.cropSel = null;
+        }
+        this.draw();
+      }
       this.drag = null;
       this.canvas.classList.remove("dragging");
     };
@@ -75,7 +109,34 @@ export class Viewer {
     await img.decode();
     this.image = img;
     this.fitMode = true;
+    this.cropSel = null;
     this.fitToWindow();
+  }
+
+  /**
+   * Turns on crop selection: a drag draws a rectangle (instead of panning) and `onSelect` gets
+   * each finished, non-empty rectangle in image pixels. Pass `null` to turn it off.
+   */
+  setCropMode(onSelect: ((rect: CropRect) => void) | null): void {
+    this.cropListener = onSelect;
+    this.cropAnchor = null;
+    this.cropSel = null;
+    this.canvas.classList.toggle("cropping", onSelect !== null);
+    this.draw();
+  }
+
+  /** Width-to-height ratio for new selections, or `null` for free-form. */
+  setCropAspect(aspect: number | null): void {
+    this.cropAspect = aspect;
+  }
+
+  /** Converts a pointer event to image pixel coordinates, without clamping. */
+  private imagePoint(e: PointerEvent): Point {
+    const rect = this.canvas.getBoundingClientRect();
+    return {
+      x: (e.clientX - rect.left - this.offsetX) / this.scale,
+      y: (e.clientY - rect.top - this.offsetY) / this.scale,
+    };
   }
 
   clear(): void {
@@ -156,6 +217,28 @@ export class Viewer {
     }
   }
 
+  /** Dims everything outside the selection and outlines the selection. */
+  private drawCropOverlay(sel: CropRect, cssWidth: number, cssHeight: number): void {
+    const ctx = this.ctx;
+    const sx = this.offsetX + sel.x * this.scale;
+    const sy = this.offsetY + sel.y * this.scale;
+    const sw = sel.w * this.scale;
+    const sh = sel.h * this.scale;
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+    const fill = (x: number, y: number, w: number, hh: number) => {
+      if (w > 0 && hh > 0) ctx.fillRect(x, y, w, hh);
+    };
+    fill(0, 0, cssWidth, sy);
+    fill(0, sy + sh, cssWidth, cssHeight - (sy + sh));
+    fill(0, sy, sx, sh);
+    fill(sx + sw, sy, cssWidth - (sx + sw), sh);
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 4]);
+    ctx.strokeRect(sx + 0.5, sy + 0.5, sw, sh);
+    ctx.setLineDash([]);
+  }
+
   private draw(): void {
     const dpr = window.devicePixelRatio || 1;
     const { cssWidth, cssHeight } = this.size();
@@ -175,6 +258,9 @@ export class Viewer {
       this.image.naturalWidth * this.scale,
       this.image.naturalHeight * this.scale,
     );
+    if (this.cropSel && this.cropSel.w > 0 && this.cropSel.h > 0) {
+      this.drawCropOverlay(this.cropSel, cssWidth, cssHeight);
+    }
     this.onZoomChange?.(this.zoomPercent);
   }
 
