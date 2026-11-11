@@ -20,12 +20,13 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            dav1d: always
+            dav1d: never
           - os: ubuntu-latest
             dav1d: auto
     env:
-      # dav1d-sys (AVIF decode via image/avif-native) needs pkg-config on Linux and no pkg-config
-      # on Windows, so build dav1d from source there (meson + ninja + nasm).
+      # dav1d-sys (AVIF decode via image/avif-native) finds dav1d through pkg-config. On Windows
+      # it must NOT build dav1d from source: meson picks up the MinGW gcc on the runner's PATH and
+      # produces a MinGW archive that MSVC link.exe cannot use. dav1d comes from vcpkg instead.
       SYSTEM_DEPS_DAV1D_BUILD_INTERNAL: ${{ matrix.dav1d }}
     steps:
       - uses: actions/checkout@v4
@@ -47,7 +48,7 @@ jobs:
           # libheif-sys always resolves libheif through vcpkg on MSVC (it ignores embedded-libheif),
           # so libheif itself must be installed here, not just its codecs. The vcpkg crate defaults
           # to the x64-windows-static-md triplet, so install into that triplet.
-          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install libheif libde265 x265 --triplet x64-windows-static-md
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install libheif libde265 x265 dav1d --triplet x64-windows-static-md
           if ($LASTEXITCODE -ne 0) { throw "vcpkg install failed" }
           $prefix = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows-static-md"
           "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8

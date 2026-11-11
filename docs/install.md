@@ -13,10 +13,11 @@
   tauri/custom-protocol` for a standalone `target/release/tpt-view.exe` that embeds the UI.
 - **Build from source:** install Rust (the version in `rust-toolchain.toml`) and Node.js 20 or
   later, then run `npm ci` and `npm run tauri build` from the repository root.
-  - The AVIF decoder (dav1d) is compiled from source during the build, so you also need the
-    Visual Studio C++ build tools, `meson`, `ninja` (both available from pip), NASM (version 2.14
-    or later, on `PATH`) and `pkg-config` (or `pkgconf`) on `PATH`. `SYSTEM_DEPS_DAV1D_BUILD_INTERNAL=always`
-    makes the build use this path explicitly.
+  - The AVIF decoder needs dav1d 1.3 or later, found through pkg-config. On Windows, install it
+    with vcpkg for the `x64-windows-static-md` triplet (`vcpkg install dav1d --triplet
+    x64-windows-static-md`), and put that triplet's `lib/pkgconfig` directory in `PKG_CONFIG_PATH`.
+    Set `SYSTEM_DEPS_DAV1D_BUILD_INTERNAL=never` so the build does not try to compile dav1d itself.
+    Building dav1d from source with a MinGW gcc on `PATH` fails to link under MSVC.
 
 ## Linux
 
